@@ -9,6 +9,7 @@ out and API/code/tools need further refactoring.
 
 """
 import collections.abc
+import struct
 import sys
 import os
 import usb1 # from "libusb1" package
@@ -18,10 +19,10 @@ from struct import pack, unpack
 from usb1 import USBContext, USBInterfaceSetting
 from enum import Enum, IntEnum
 
-from typing import Iterator
+from typing import Iterator, Tuple
 
 from . import configuration_block
-from .utils import ByteSequence
+from .utils import ByteSequence, log
 from .usb_constants import *
 
 from .configuration_block import CY_TYPE
@@ -99,7 +100,7 @@ class CyUSB(object):
         # if self.ep_in is None or self.ep_out is None or self.ep_intr is None:
         #     raise RuntimeError("Failed to find CY7C652xx USB endpoints in USB device -- not a Cypress serial bridge device?")
 
-        logging.info("Discovered USB endpoints successfully")
+        log.info("Discovered USB endpoints successfully")
 
         # open USBDeviceHandle
         try:
@@ -132,6 +133,22 @@ class CyUSB(object):
                 self.dev.setInterfaceAltSetting(self.if_num, self.us_num)
 
             self.dev.claimInterface(self.if_num)
+
+            # Check the device signature
+            signature = bytes(self.CyGetSignature())
+            log.info("Device signature: %s", repr(signature))
+            if signature != b"CYUS":
+
+                # __exit__ won't be called if we raise an exception here
+                self.dev.releaseInterface(self.if_num)
+                self.close()
+
+                raise RuntimeError("Invalid signature for CY7C652xx device")
+
+            # Get and print the firmware version
+            firmware_version = self.CyGetFirmwareVersion()
+            print("Connected to CY7C652xx device, firmware version %d.%d.%d build %d" % firmware_version)
+
         except usb1.USBErrorNotSupported:
             if sys.platform == "win32":
                 raise RuntimeError("Failed to claim USB device, ensure that WinUSB driver has been loaded for it using Zadig")
@@ -428,16 +445,32 @@ class CyUSB(object):
         self.dtrValue = 0
         return ret
 
-    def CyGetFirmwareVersion(self):
+    def CyGetFirmwareVersion(self) -> Tuple[int, int, int, int]:
+        """
+        This API retrieves the firmware version of the USB Serial device.
+
+        :return: Firmware version as a 4-tuple of (major ver, minor ver, patch ver, build number)
+        """
         bmRequestType = CY_VENDOR_REQUEST | EP_IN
         bmRequest = CY_VENDOR_CMDS.CY_GET_VERSION_CMD
         wValue = 0
         wIndex = 0
         wLength = CY_GET_FIRMWARE_VERSION_LEN
 
-        ret = self.dev.controlRead(bmRequestType, bmRequest,
+        firmware_version_bytes = self.dev.controlRead(bmRequestType, bmRequest,
                                    wValue, wIndex, wLength, self.timeout)
-        return ret
+
+        # C definition:
+        # typedef struct _CY_FIRMWARE_VERSION {
+        #
+        #     UINT8 majorVersion;                 /*Major version of the Firmware*/
+        #     UINT8 minorVersion;                 /*Minor version of the Firmware*/
+        #     UINT16 patchNumber;                 /*Patch Number of the Firmware*/
+        #     UINT32 buildNumber;                 /*Build Number of the Firmware*/
+        #
+        # } CY_FIRMWARE_VERSION, *PCY_FIRMWARE_VERSION;
+
+        return struct.unpack("<BBHI", firmware_version_bytes)
 
     def CyResetDevice(self):
         """
@@ -506,16 +539,19 @@ class CyUSB(object):
                                    wValue, wIndex, wLength, self.timeout)
         return ret
 
-    def CyGetSignature(self):
+    def CyGetSignature(self) -> ByteSequence:
+        """
+        This API is used to get the signature of the device. It would be CYUS when we are in
+        actual device mode and CYBL when we are bootloader mode.
+        """
         bmRequestType = CY_VENDOR_REQUEST | EP_IN
         bmRequest = CY_VENDOR_CMDS.CY_GET_SIGNATURE_CMD
         wValue = 0
         wIndex = 0
         wLength = CY_GET_SIGNATURE_LEN
 
-        ret = self.dev.controlRead(bmRequestType, bmRequest,
+        return self.dev.controlRead(bmRequestType, bmRequest,
                                    wValue, wIndex, wLength, self.timeout)
-        return ret
 
     ######################################################################
     # Non-Cypress APIs still under experimental stage

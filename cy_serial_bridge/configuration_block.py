@@ -1,5 +1,5 @@
 import pathlib
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
 import struct
 from enum import IntEnum
 import re
@@ -7,7 +7,7 @@ from cy_serial_bridge.utils import ByteSequence
 from cy_serial_bridge.usb_constants import CY_TYPE
 
 CONFIG_BLOCK_EXPECTED_MAGIC = b"CYUS"
-CONFIG_BLOCK_EXPECTED_VERSION = 0x30001
+CONFIG_BLOCK_EXPECTED_MAJOR_VERSION = 1
 
 
 class ConfigurationBlock:
@@ -47,9 +47,8 @@ class ConfigurationBlock:
         # Check magic, format, and checksum
         if self._cfg_bytes[0:4] != CONFIG_BLOCK_EXPECTED_MAGIC:
             raise ValueError("Incorrect magic at start of configuration block")
-        cfg_version = struct.unpack("<I", self._cfg_bytes[4:8])[0]
-        if cfg_version != CONFIG_BLOCK_EXPECTED_VERSION:
-            raise ValueError(f"Only know how to decode config block version 0x{CONFIG_BLOCK_EXPECTED_VERSION:x}, this is 0x{cfg_version:x}")
+        if self.config_format_version[0] != CONFIG_BLOCK_EXPECTED_MAJOR_VERSION:
+            raise ValueError(f"Only know how to work with config block major version {CONFIG_BLOCK_EXPECTED_MAJOR_VERSION} this is 0x{self.config_format_version[0]}")
         if self._get_checksum() != self._calculate_checksum():
             raise ValueError(f"Checksum failed for configuration block.  Expected 0x{self._calculate_checksum():x} but read 0x{self._get_checksum():x} from header")
 
@@ -118,6 +117,18 @@ class ConfigurationBlock:
     @device_type.setter
     def device_type(self, value: CY_TYPE):
         self._cfg_bytes[0x1c] = value.value
+
+    @property
+    def config_format_version(self) -> Tuple[int, int, int]:
+        """
+        Version of the configuration block format (major-minor-patch)
+        """
+        # I observed that in an older dump file that @tai posted, the version bytes were "01 00 00 00", and in
+        # dumps from my device (with firmware version 1.0.3 build 78) they are "01 00 03 00".  This causes me
+        # to think that the bytes are either major-minor-patch version of the configuration block, or are
+        # the major-minor-patch version of the firmware that wrote the config block.  Either way, they seem to
+        # be organized in major-minor-patch format.
+        return self._cfg_bytes[4], self._cfg_bytes[5], self._cfg_bytes[6]
 
     @property
     def capsense_on(self) -> bool:
@@ -204,6 +215,7 @@ class ConfigurationBlock:
         Dump the decodable information from this config block.
         """
         return f"""ConfigurationBlock(
+    config_format_version={'.'.join(str(part) for part in self.config_format_version)}
     device_type=CY_TYPE.{self.device_type.name},
     vid=0x{self.vid:04x},
     pid=0x{self.pid:04x},

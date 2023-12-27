@@ -122,8 +122,6 @@ def do_randomize_serno(dev: cy_serial_bridge.CyUSB):
 
         print(f"Assigned random serial number: {random_serial_number_str}")
         print("Note that you may need to unplug and replug the device for the change to take effect.")
-        if sys.platform == "win32":
-            print("Also note that on Windows, you will need to re-assign the WinUSB driver using Zadig.")
 
     except:
         dev.disconnect()
