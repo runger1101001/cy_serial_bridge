@@ -64,102 +64,6 @@ def find_type(ud: usb1.USBDevice, cy_type):
     yield from find_path(ud, check_match)
 
 class CyUSB(object):
-    def __init__(self, ud: usb1.USBDevice, cy_type, index=0, timeout=1000):
-        found = list(find_type(ud, cy_type))
-        if not found:
-            raise Exception("No device found with given type")
-        if len(found) - 1 > index:
-            raise Exception("Not enough interfaces (SCBs) found")
-
-        # setup parameters
-        us: usb1.USBInterfaceSetting
-        ui: usb1.USBInterface
-        uc: usb1.USBConfiguration
-        ud: usb1.USBDevice
-        us, ui, uc, ud = found[index]
-        self.us_num = us.getAlternateSetting()
-        self.if_num = us.getNumber()
-        self.uc_num = uc.getConfigurationValue()
-        self.timeout = timeout
-
-        # scan EPs
-        self.ep_in = None
-        self.ep_out = None
-        for ep in us:
-            ep_attr = ep.getAttributes()
-            ep_addr = ep.getAddress()
-            if ep_attr == EP_BULK:
-                if ep_addr & EP_IN:
-                    self.ep_in = ep_addr
-                else:
-                    self.ep_out = ep_addr
-            elif ep_attr == EP_INTR:
-                self.ep_intr = ep_addr
-
-        # TODO why doesn't this check work?  Need to debug
-        # if self.ep_in is None or self.ep_out is None or self.ep_intr is None:
-        #     raise RuntimeError("Failed to find CY7C652xx USB endpoints in USB device -- not a Cypress serial bridge device?")
-
-        log.info("Discovered USB endpoints successfully")
-
-        # open USBDeviceHandle
-        try:
-            self.dev = ud.open()
-        except usb1.USBErrorNotFound:
-            if sys.platform == "win32":
-                raise RuntimeError("Failed to open USB device, ensure that WinUSB driver has been loaded for it using Zadig")
-            else:
-                raise
-
-        if usb1.hasCapability(usb1.CAP_SUPPORTS_DETACH_KERNEL_DRIVER):
-            # detach kernel driver to gain access
-            self.dev.setAutoDetachKernelDriver(True)
-
-    def close(self):
-        if self.dev:
-            self.dev.close()
-        self.dev = None
-
-    def __enter__(self):
-
-        try:
-            #
-            # NOTE:
-            # Windows and others seems to differ in expected order of
-            # when to claim interface and when to set configuration.
-            #
-            self.dev.setConfiguration(self.uc_num)
-            if self.us_num > 0:
-                self.dev.setInterfaceAltSetting(self.if_num, self.us_num)
-
-            self.dev.claimInterface(self.if_num)
-
-            # Check the device signature
-            signature = bytes(self.CyGetSignature())
-            log.info("Device signature: %s", repr(signature))
-            if signature != b"CYUS":
-
-                # __exit__ won't be called if we raise an exception here
-                self.dev.releaseInterface(self.if_num)
-                self.close()
-
-                raise RuntimeError("Invalid signature for CY7C652xx device")
-
-            # Get and print the firmware version
-            firmware_version = self.CyGetFirmwareVersion()
-            print("Connected to CY7C652xx device, firmware version %d.%d.%d build %d" % firmware_version)
-
-        except usb1.USBErrorNotSupported:
-            if sys.platform == "win32":
-                raise RuntimeError("Failed to claim USB device, ensure that WinUSB driver has been loaded for it using Zadig")
-            else:
-                raise
-
-        return self
-
-    def __exit__(self, err_type, err_value, tb):
-        self.dev.releaseInterface(self.if_num)
-        self.close()
 
     ######################################################################
     # WARNING: Many APIs are not yet complete and/or tested.
@@ -445,56 +349,6 @@ class CyUSB(object):
         self.dtrValue = 0
         return ret
 
-    def CyGetFirmwareVersion(self) -> Tuple[int, int, int, int]:
-        """
-        This API retrieves the firmware version of the USB Serial device.
-
-        :return: Firmware version as a 4-tuple of (major ver, minor ver, patch ver, build number)
-        """
-        bmRequestType = CY_VENDOR_REQUEST | EP_IN
-        bmRequest = CY_VENDOR_CMDS.CY_GET_VERSION_CMD
-        wValue = 0
-        wIndex = 0
-        wLength = CY_GET_FIRMWARE_VERSION_LEN
-
-        firmware_version_bytes = self.dev.controlRead(bmRequestType, bmRequest,
-                                   wValue, wIndex, wLength, self.timeout)
-
-        # C definition:
-        # typedef struct _CY_FIRMWARE_VERSION {
-        #
-        #     UINT8 majorVersion;                 /*Major version of the Firmware*/
-        #     UINT8 minorVersion;                 /*Minor version of the Firmware*/
-        #     UINT16 patchNumber;                 /*Patch Number of the Firmware*/
-        #     UINT32 buildNumber;                 /*Build Number of the Firmware*/
-        #
-        # } CY_FIRMWARE_VERSION, *PCY_FIRMWARE_VERSION;
-
-        return struct.unpack("<BBHI", firmware_version_bytes)
-
-    def CyResetDevice(self):
-        """
-        The API will reset the device by sending a vendor request to the firmware. The device
-        will be re-enumerated.
-        After calling this function, the serial bridge object that you called it on will become
-        nonfunctional and should be closed.  You must open a new instance of the driver, potentially
-        after the device re-enumerates.
-        """
-
-        bmRequestType = CY_VENDOR_REQUEST | EP_IN
-        bmRequest = CY_VENDOR_CMDS.CY_DEVICE_RESET_CMD
-        wValue = 0xA6B6
-        wIndex = 0xADBA
-        data = bytes()
-
-        # Resetting the device always seems to result in an error -- it seems like the
-        # low level USB control operation always returns USBD_STATUS_XACT_ERROR (0xc0000011)
-        try:
-            self.dev.controlWrite(bmRequestType, bmRequest,
-                                   wValue, wIndex, data, self.timeout)
-        except usb1.USBErrorPipe:
-            return
-
     def CySetGpioValue(self, gpio, value):
         bmRequestType = CY_VENDOR_REQUEST | EP_IN
         bmRequest = CY_VENDOR_CMDS.CY_GPIO_SET_VALUE_CMD
@@ -538,20 +392,6 @@ class CyUSB(object):
         ret = self.dev.controlRead(bmRequestType, bmRequest,
                                    wValue, wIndex, wLength, self.timeout)
         return ret
-
-    def CyGetSignature(self) -> ByteSequence:
-        """
-        This API is used to get the signature of the device. It would be CYUS when we are in
-        actual device mode and CYBL when we are bootloader mode.
-        """
-        bmRequestType = CY_VENDOR_REQUEST | EP_IN
-        bmRequest = CY_VENDOR_CMDS.CY_GET_SIGNATURE_CMD
-        wValue = 0
-        wIndex = 0
-        wLength = CY_GET_SIGNATURE_LEN
-
-        return self.dev.controlRead(bmRequestType, bmRequest,
-                                   wValue, wIndex, wLength, self.timeout)
 
     ######################################################################
     # Non-Cypress APIs still under experimental stage

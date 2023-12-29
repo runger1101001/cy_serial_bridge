@@ -1,3 +1,4 @@
+import struct
 from enum import IntEnum
 
 """
@@ -13,10 +14,16 @@ EP_OUT = 0x00
 EP_IN  = 0x80
 
 CY_VENDOR_REQUEST = 0x40
+CY_VENDOR_REQUEST_DEVICE_TO_HOST = CY_VENDOR_REQUEST | EP_IN
+CY_VENDOR_REQUEST_HOST_TO_DEVICE = CY_VENDOR_REQUEST | EP_OUT
 CY_CLASS_INTERFACE_REQUEST = 0x21
 
 # used to set which SCB to configure
 CY_SCB_INDEX_POS = 15
+
+# Flash constants.  From the comments in CyProgUserFlash
+USER_FLASH_PAGE_SIZE = 128
+USER_FLASH_SIZE = 512
 
 class CY_CLASS(IntEnum):
     DISABLED = 0x00 # None or the interface is disabled
@@ -145,3 +152,24 @@ CY_GPIO_SET_LEN = 1
 CY_PHDC_GET_STATUS_LEN = 2
 CY_PHDC_CLR_FEATURE_WVALUE = 0x1
 CY_PHDC_SET_FEATURE_WVALUE = 0x0101
+
+# Struct packings
+
+# C structure layout:
+# typedef struct
+# {
+#     UINT32 frequency;           /* Frequency of operation. Only valid values are
+#                                    100KHz and 400KHz. */ <--this comment seems to be wrong
+#     UINT8 sAddress;             /* Slave address to be used when in slave mode. */
+#     bool isMsbFirst;            /* Whether to transmit most significant bit first. */
+#     bool isMaster;              /* Whether to block is to be configured as a master:
+#                                    CyTrue - The block functions as I2C master;
+#                                    CyFalse - The block functions as I2C slave. */
+#     bool sIgnore;               /* Ignore general call in slave mode. */
+#     bool clockStretch;          /* Whether to stretch clock in case of no FIFO availability. */
+#     bool isLoopback;            /* Whether to loop back TX data to RX. Valid only
+#                                    for debug purposes. */
+#     UCHAR reserved[6];          /*Reserved for future use*/
+# } CyUsI2cConfig_t;
+CY_USB_I2C_CONFIG_STRUCT_LAYOUT = "<I5B6x"
+assert struct.calcsize(CY_USB_I2C_CONFIG_STRUCT_LAYOUT) == CY_I2C.CONFIG_LENGTH
