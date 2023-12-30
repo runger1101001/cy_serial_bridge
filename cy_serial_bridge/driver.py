@@ -297,7 +297,7 @@ class CySerBridgeBase:
         return result_bytes
 
 
-class CySerialBridgeMfgrIface(CySerBridgeBase):
+class CyMfgrIface(CySerBridgeBase):
     """
     Class allowing access to a CY7C652xx in the manufacturing interface mode.
 
@@ -411,7 +411,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
         """
         super().__init__(ud, CyType.MFG, scb_index, timeout)
 
-    def configure_i2c(self, config: CyI2CConfig):
+    def set_i2c_configuration(self, config: CyI2CConfig):
         """
         This API configures the I2C module of USB Serial device.
         Currently the only setting configurable for I2C master is the frequency.
@@ -421,23 +421,36 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         Note: Using this API during an active transaction of I2C may result in data loss.
         """
-        binary_configuration = struct.pack(CY_USB_I2C_CONFIG_STRUCT_LAYOUT, (
-            config.frequency,
-            0,  # seems to be ignored in master mode
-            1,  # Driver always sets this to 1
-            0,  # seems to be ignored in master mode
-            0,  # seems to be ignored in master mode
-            0,  # Driver always sets this to 0
-        ))
+        binary_configuration = struct.pack(CY_USB_I2C_CONFIG_STRUCT_LAYOUT,
+        config.frequency,
+            0,  # sAddress - seems to be ignored in master mode
+            1,  # isMsbFirst - Driver always sets this to 1
+            1,  # isMaster - set to true for master mode
+            0,  # sIgnore - seems to be ignored in master mode
+            0,  # clockStretch - seems to be ignored in master mode
+            0,  # isLoopback - Driver always sets this to 0
+        )
 
-        self.dev.controlWrite(CY_VENDOR_REQUEST_HOST_TO_DEVICE, CyVendorCmds.CY_I2C_SET_CONFIG_CMD, self.scb_index,
-                              binary_configuration, self.timeout)
+        self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_I2C_SET_CONFIG_CMD,
+            value=(self.scb_index << CyI2c.SCB_INDEX_POS),
+            index=0,
+            data=binary_configuration,
+            timeout=self.timeout)
 
     def read_i2c_configuration(self) -> CyI2CConfig:
         """
         Read the current I2C master mode configuration from the device.
         """
-        config_bytes = self.dev.controlRead(CY_VENDOR_REQUEST_DEVICE_TO_HOST, CyVendorCmds.CY_I2C_GET_CONFIG_CMD, self.scb_index, CyI2c.CONFIG_LENGTH, self.timeout)
+        config_bytes = self.dev.controlRead(
+            request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
+            request=CyVendorCmds.CY_I2C_GET_CONFIG_CMD,
+            value=(self.scb_index << CyI2c.SCB_INDEX_POS),
+            index=0,
+            length=CyI2c.CONFIG_LENGTH,
+            timeout=self.timeout)
+
         config_unpacked = struct.unpack(CY_USB_I2C_CONFIG_STRUCT_LAYOUT, config_bytes)
         config = CyI2CConfig(frequency=config_unpacked[0])
 

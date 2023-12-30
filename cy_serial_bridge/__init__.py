@@ -19,7 +19,7 @@ from typing import Iterator, Tuple
 import usb1  # from "libusb1" package
 from usb1 import USBContext, USBInterfaceSetting
 
-from cy_serial_bridge import configuration_block
+from cy_serial_bridge import configuration_block, driver
 from cy_serial_bridge.configuration_block import CyType
 from cy_serial_bridge.usb_constants import *
 from cy_serial_bridge.utils import ByteSequence, log

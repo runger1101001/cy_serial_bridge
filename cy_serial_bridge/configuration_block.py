@@ -56,6 +56,7 @@ class ConfigurationBlock:
     def _decode_string_field(self, flag_addr, data_start_addr) -> Optional[str]:
         """
         Decode a variable-length string from the config block.
+
         :param flag_addr: Address of the flag indicating whether this data is set or not
         :param data_start_addr: Address that the data starts at (this is the address of the length field, 2 bytes before the first character)
         :return: String data, or None if unset
@@ -82,6 +83,7 @@ class ConfigurationBlock:
     def _encode_string_field(self, flag_addr, data_start_addr, value: Optional[str]):
         """
         Encode a variable-length string from the config block.
+
         :param flag_addr: Address of the flag indicating whether this data is set or not
         :param data_start_addr: Address that the data starts at (this is the address of the length field, 2 bytes before the first character)
         :param value: String data, or None if unset
@@ -134,8 +136,9 @@ class ConfigurationBlock:
     @property
     def capsense_on(self) -> bool:
         """
-        Whether CapSense touch sensing is enabled in this configuration [note that this utility currently doesn't
-        support writing all the fields needed to make capsense work]
+        Whether CapSense touch sensing is enabled in this configuration
+
+        [note that this utility currently doesn't support writing all the fields needed to make capsense work]
         """
         return self._cfg_bytes[0x4c] == 1
 

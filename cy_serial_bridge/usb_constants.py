@@ -101,6 +101,7 @@ class CyI2c(IntEnum):
     BUS_BUSY_ERROR = (1 << 5)
     ENABLE_PRECISE_TIMING = 1
     EVENT_NOTIFICATION_LEN = 3
+    SCB_INDEX_POS = 15
 
 
 # SPI related Macros
@@ -179,5 +180,5 @@ CY_PHDC_SET_FEATURE_WVALUE = 0x0101
 #                                    for debug purposes. */
 #     UCHAR reserved[6];          /*Reserved for future use*/
 # } CyUsI2cConfig_t;
-CY_USB_I2C_CONFIG_STRUCT_LAYOUT = "<I5B6x"
+CY_USB_I2C_CONFIG_STRUCT_LAYOUT = "<I6B6x"
 assert struct.calcsize(CY_USB_I2C_CONFIG_STRUCT_LAYOUT) == CyI2c.CONFIG_LENGTH

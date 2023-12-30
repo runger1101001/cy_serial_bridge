@@ -33,7 +33,7 @@ def main(opt):
 
     log.info("Connecting...")
 
-    with cy_serial_bridge.CyUSB(ud, cy_serial_bridge.CyType.MFG, index=opt.scb) as dev:
+    with cy_serial_bridge.driver.CyMfgrIface(ud, scb_index=opt.scb) as dev:
         if cmd == "save": do_save(dev, *opt.args[1:])
         if cmd == "load": do_load(dev, *opt.args[1:])
         if cmd == "type": do_change_type(dev, *opt.args[1:])
@@ -129,7 +129,7 @@ def do_randomize_serno(dev: cy_serial_bridge.CyUSB):
         raise
 
 
-def do_change_type(dev: cy_serial_bridge.CyUSB, type_string: str):
+def do_change_type(dev: cy_serial_bridge.driver.CyMfgrIface, type_string: str):
 
     # Convert/validate type
     # Note: There is also a "JTAG" device class which can be set, but I'm unsure if this is actually
@@ -168,7 +168,7 @@ def do_change_type(dev: cy_serial_bridge.CyUSB, type_string: str):
         raise
 
     # Reset the device so that the new configuration loads
-    dev.CyResetDevice()
+    dev.reset_device()
 
 
 if __name__ == '__main__' and '__file__' in globals():
