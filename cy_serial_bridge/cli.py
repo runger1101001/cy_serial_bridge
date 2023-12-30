@@ -109,7 +109,7 @@ def do_randomize_serno(dev: cy_serial_bridge.CyUSB):
         # Generate a random integer with 32 digits
         serial_number_max = 10**32 - 1
         random_serial_number = random.randint(0, serial_number_max)
-        random_serial_number_str = "%32d" % random_serial_number
+        random_serial_number_str = f"{random_serial_number:032}"
 
         config_block.serial_number = random_serial_number_str
 

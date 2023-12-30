@@ -262,14 +262,17 @@ class CySerBridgeBase:
         if addr < 0 or len(buff) + addr > USER_FLASH_SIZE:
             raise ValueError("Program operation outside user flash bounds!")
 
-        bm_request = CyVendorCmds.CY_PROG_USER_FLASH_CMD
-
-        num_pages = len(buff) / USER_FLASH_PAGE_SIZE
+        num_pages = len(buff) // USER_FLASH_PAGE_SIZE
         for page_idx in range(num_pages):
             first_byte_idx = page_idx * USER_FLASH_PAGE_SIZE
             bytes_to_send = buff[first_byte_idx:first_byte_idx+USER_FLASH_PAGE_SIZE]
-            self.dev.controlWrite(CY_VENDOR_REQUEST_DEVICE_TO_HOST, bm_request,
-                                        0, addr, bytes_to_send, self.timeout)
+            self.dev.controlWrite(
+                request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
+                request=CyVendorCmds.CY_PROG_USER_FLASH_CMD,
+                value=0,
+                index=addr + first_byte_idx,
+                data=bytes_to_send,
+                timeout=self.timeout)
 
     def read_user_flash(self, addr: int, size: int) -> bytearray:
         """
@@ -284,14 +287,17 @@ class CySerBridgeBase:
         if addr < 0 or size + addr > USER_FLASH_SIZE:
             raise ValueError("Read operation outside user flash bounds!")
 
-        bm_request = CyVendorCmds.CY_READ_USER_FLASH_CMD
-
         result_bytes = bytearray()
 
-        num_pages = size / USER_FLASH_PAGE_SIZE
+        num_pages = size // USER_FLASH_PAGE_SIZE
         for page_idx in range(num_pages):
-            page_bytes = self.dev.controlRead(CY_VENDOR_REQUEST_DEVICE_TO_HOST, bm_request,
-                                       0, addr, USER_FLASH_PAGE_SIZE, self.timeout)
+            page_bytes = self.dev.controlRead(
+                request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
+                request=CyVendorCmds.CY_READ_USER_FLASH_CMD,
+                value=0,
+                index=addr + page_idx * USER_FLASH_PAGE_SIZE,
+                length=USER_FLASH_PAGE_SIZE,
+                timeout=self.timeout)
             result_bytes.extend(page_bytes)
 
         return result_bytes
