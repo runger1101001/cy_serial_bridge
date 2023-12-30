@@ -1,9 +1,8 @@
-import random
-
-from argparse import ArgumentParser
-import sys
-import os
 import logging
+import pathlib
+import random
+import sys
+from argparse import ArgumentParser
 
 import cy_serial_bridge
 from cy_serial_bridge.utils import log
@@ -34,17 +33,19 @@ def main(opt):
 
     log.info("Connecting...")
 
-    with cy_serial_bridge.CyUSB(ud, cy_serial_bridge.CY_TYPE.MFG, index=opt.scb) as dev:
+    with cy_serial_bridge.CyUSB(ud, cy_serial_bridge.CyType.MFG, index=opt.scb) as dev:
         if cmd == "save": do_save(dev, *opt.args[1:])
         if cmd == "load": do_load(dev, *opt.args[1:])
         if cmd == "type": do_change_type(dev, *opt.args[1:])
         if cmd == "randomize_serno": do_randomize_serno(dev)
 
+
 def to_int(v):
     return int(v, 0)
 
+
 def format_usage():
-    p = os.path.basename(sys.argv[0])
+    p = pathlib.Path(sys.argv[0]).name
     return """
 {p} - Reprogram Cypress USB-to-Serial chip (CY7C65211, etc)
 Usage: {p} [options] (save|load|mode) args...
@@ -76,7 +77,7 @@ def do_save(dev: cy_serial_bridge.CyUSB, file):
     log.info("Read the following configuration from the device: %s", str(config_block))
 
     # Save to file
-    open(file, "wb").write(bytes(buf))
+    pathlib.Path(file).write_bytes(bytes(buf))
 
 
 def do_load(dev: cy_serial_bridge.CyUSB, file):
@@ -134,11 +135,11 @@ def do_change_type(dev: cy_serial_bridge.CyUSB, type_string: str):
     # Note: There is also a "JTAG" device class which can be set, but I'm unsure if this is actually
     # a valid setting as it doesn't appear in the config tool UI.
     if type_string.upper() == "UART":
-        cy_type = cy_serial_bridge.CY_TYPE.UART
+        cy_type = cy_serial_bridge.CyType.UART
     elif type_string.upper() == "SPI":
-        cy_type = cy_serial_bridge.CY_TYPE.SPI
+        cy_type = cy_serial_bridge.CyType.SPI
     elif type_string.upper() == "I2C":
-        cy_type = cy_serial_bridge.CY_TYPE.I2C
+        cy_type = cy_serial_bridge.CyType.I2C
     else:
         raise ValueError("Invalid type argument!")
 

@@ -1,9 +1,43 @@
+[project]
+name = "cy_serial_bridge"
+# this is used by Ruff to disable "upgrade to feature x" inspections where x was added
+# after the given version
+requires-python = ">=3.8"
+version = "0.1.0"
+description = "Pure Python driver for using and reconfiguring the CY7C652xx family of USB to SPI/I2C/UART bridge ICs."
+authors = [
+  {name = "Jamie Smith", email = "smit109@usc.edu"},
+]
+readme = "README.md"
+license = {text = "LGPL"}
+classifiers = [
+  # How mature is this project? Common values are
+  #   3 - Alpha
+  #   4 - Beta
+  #   5 - Production/Stable
+  "Development Status :: 3 - Beta",
+
+  # Indicate who your project is intended for
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Embedded Systems",
+
+  # Pick your license as you wish (see also "license" above)
+  "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+
+  # Specify the Python versions you support here.
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
 [tool.poetry]
-name = "cy-serial-bridge"
+name = "cy_serial_bridge"
 version = "0.1.0"
 description = "Pure Python driver for using and reconfiguring the CY7C652xx family of USB to SPI/I2C/UART bridge ICs."
 authors = ["Jamie Smith <smit109@usc.edu>"]
-license = "LGPL"
 readme = "README.md"
 include = ['CHANGELOG.md', 'LICENSE', 'py.typed',]
 packages = [
@@ -52,17 +86,14 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 select = [
     'A',    # Builtins
-    'ANN',  # Annotations
+    # 'ANN',  # Annotations - disabled for now because mypy checks these already and is a bit less pedantic
     'ARG',  # Unused arguments
     'B',    # Bugbear
     'BLE',  # Blind except
     'C4',   # Comprehensions
     'C90',  # mccabe
     'COM',  # Commas
-    'D1',   # Undocumented public elements
     'D2',   # Docstring conventions
-    'D3',   # Triple double quotes
-    'D4',   # Docstring text format
     'DTZ',  # Datetimes
     'EM',   # Error messages
     'ERA',  # Commented-out code
@@ -96,7 +127,7 @@ select = [
     'SLF',  # Private member access
     'SLOT', # __slots__
     'T10',  # Debugger
-    'T20',  # Print
+    # 'T20',  # Print - disabled because we are implementing a CLI and need to use print
     'TCH',  # Type checking
     'TID',  # Tidy imports
     'TRY',  # Exception handling
@@ -109,6 +140,9 @@ ignore = [
     'D212',    # Multi-line summary first line
     'PLR0913', # Too many arguments
     'Q000',    # Single quotes found but double quotes preferred
+    'F405',    # Star imports
+    'D200',    # One-line docstring should fit on one line
+    'S101',    # Assert statements
 ]
 ignore-init-module-imports = true
 line-length = 120

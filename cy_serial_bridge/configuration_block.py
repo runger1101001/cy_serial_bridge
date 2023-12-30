@@ -1,17 +1,18 @@
+from __future__ import annotations
+
 import pathlib
-from typing import Union, Optional, Tuple
-import struct
-from enum import IntEnum
 import re
+import struct
+from typing import Optional, Union
+
+from cy_serial_bridge.usb_constants import CyType
 from cy_serial_bridge.utils import ByteSequence
-from cy_serial_bridge.usb_constants import CY_TYPE
 
 CONFIG_BLOCK_EXPECTED_MAGIC = b"CYUS"
 CONFIG_BLOCK_EXPECTED_MAJOR_VERSION = 1
 
 
 class ConfigurationBlock:
-
     """
     Module which implements basic reading/writing of CY7C652xx memory configuration blocks.
 
@@ -25,10 +26,10 @@ class ConfigurationBlock:
     def __init__(self, block_file: Optional[Union[pathlib.Path, str]] = None, block_bytes: Optional[ByteSequence] = None):
         """
         Create a configuration_block from a file or byte array.  Must pass either a file path OR a bytes object.
+
         :param block_file:
         :param block_bytes:
         """
-
         if (block_bytes is None and block_file is None) or (block_bytes is not None and block_file is not None):
             raise ValueError("Invalid usage!")
 
@@ -108,18 +109,18 @@ class ConfigurationBlock:
         return struct.unpack("<I", self._cfg_bytes[8:12])[0]
 
     @property
-    def device_type(self) -> CY_TYPE:
+    def device_type(self) -> CyType:
         """
         Type of device that this configuration describes (SPI/I2C/UART/etc)
         """
-        return CY_TYPE(self._cfg_bytes[0x1c])
+        return CyType(self._cfg_bytes[0x1c])
 
     @device_type.setter
-    def device_type(self, value: CY_TYPE):
+    def device_type(self, value: CyType):
         self._cfg_bytes[0x1c] = value.value
 
     @property
-    def config_format_version(self) -> Tuple[int, int, int]:
+    def config_format_version(self) -> tuple[int, int, int]:
         """
         Version of the configuration block format (major-minor-patch)
         """
@@ -164,6 +165,7 @@ class ConfigurationBlock:
     def mfgr_string(self) -> Optional[str]:
         """
         Manufacturer String of the device.  Up to 32 characters (seems to be UTF-16 type encoded in descriptor).
+
         May be set to None, indicating that the field is unset.
         """
         return self._decode_string_field(0xa0, 0xee)
@@ -176,6 +178,7 @@ class ConfigurationBlock:
     def product_string(self) -> Optional[str]:
         """
         Product String of the device.  Up to 32 characters (seems to be UTF-16 type encoded in descriptor).
+
         May be set to None, indicating that the field is unset.
         """
         return self._decode_string_field(0xa4, 0x130)
@@ -188,6 +191,7 @@ class ConfigurationBlock:
     def serial_number(self) -> Optional[str]:
         """
         Serial Number of the device.  Up to 32 characters (seems to be UTF-16 type encoded in descriptor).
+
         May be set to None, indicating that the field is unset.
         The serial number, according the config utility, may only be set to alphabetic and numeric characters.
         """
@@ -204,6 +208,7 @@ class ConfigurationBlock:
     def bytes(self):
         """
         Get the raw bytes for this buffer.
+
         Calling this function also updates the checksum to account for any changes made to the bytes since
         the config block was updated.
         """

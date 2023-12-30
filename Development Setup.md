@@ -6,13 +6,13 @@ This library uses Poetry to handle setting up for development and uploading the 
 
 ### Setting Up for Local Dev
 ```
-python -m poetry install
+python -m poetry install --with=linters
 python -m poetry shell # This activates a virtual environment containing the dependencies
 ```
 
 ### Running Formatter
 ```
-poetry run ruff check --fix .
+python -m poetry run ruff check --fix .
 ```
 
 ### Running Tests
