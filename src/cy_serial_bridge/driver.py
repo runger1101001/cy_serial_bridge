@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import Iterator, Tuple, cast
+from typing import TYPE_CHECKING, Iterator, Tuple, cast
 
-from src.cy_serial_bridge.configuration_block import ConfigurationBlock
-from src.cy_serial_bridge.usb_constants import *
-from src.cy_serial_bridge.utils import ByteSequence, log
+import usb1  # from 'libusb1' package
+
+if TYPE_CHECKING:
+    from cy_serial_bridge.configuration_block import ConfigurationBlock
+
+from cy_serial_bridge.usb_constants import *
+from cy_serial_bridge.utils import ByteSequence, log
 
 """
 Module containing the logic for communicating with the CY7C652xx USB device.
@@ -28,7 +32,7 @@ def find_device(vid=None, pid=None) -> Iterator[usb1.USBDevice]:
         yield dev
 
 
-def find_path(ux, func, hist=[]):
+def find_path(ux, func, hist):
     """Scans through USB device structure"""
     try:
         hist.insert(0, ux)
@@ -53,7 +57,7 @@ def find_type(ud: usb1.USBDevice, cy_type):
     """Finds USB interface by CY_TYPE. Yields list of (us, ui, uc, ud) set"""
     def check_match(ux):
         return isinstance(ux, usb1.USBInterfaceSetting) and get_type(ux) == cy_type
-    yield from find_path(ud, check_match)
+    yield from find_path(ud, check_match, [])
 
 
 class CySerBridgeBase:
@@ -67,15 +71,17 @@ class CySerBridgeBase:
 
         :param ud: USB device to open
         :param cy_type: Type to open the device as.
-        :param index: Index of the SCB to open, for multi-port devices
+        :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for USB operations in milliseconds
         """
         self.scb_index = scb_index
         found = list(find_type(ud, cy_type))
         if not found:
-            raise RuntimeError("No device found with given type")
+            message = "No device found with given type"
+            raise RuntimeError(message)
         if len(found) - 1 > scb_index:
-            raise RuntimeError("Not enough interfaces (SCBs) found")
+            message = "Not enough interfaces (SCBs) found"
+            raise RuntimeError(message)
 
         # setup parameters
         us: usb1.USBInterfaceSetting
@@ -113,7 +119,8 @@ class CySerBridgeBase:
             self.dev = ud.open()
         except usb1.USBErrorNotFound as ex:
             if sys.platform == "win32":
-                raise RuntimeError("Failed to open USB device, ensure that WinUSB driver has been loaded for it using Zadig") from ex
+                message = "Failed to open USB device, ensure that WinUSB driver has been loaded for it using Zadig"
+                raise RuntimeError(message) from ex
             else:
                 raise
 
@@ -144,7 +151,8 @@ class CySerBridgeBase:
                 self.dev.releaseInterface(self.if_num)
                 self.close()
 
-                raise RuntimeError("Invalid signature for CY7C652xx device")
+                message = "Invalid signature for CY7C652xx device"
+                raise RuntimeError(message)
 
             # Get and print the firmware version
             firmware_version = self.get_firmware_version()
@@ -152,7 +160,8 @@ class CySerBridgeBase:
 
         except usb1.USBErrorNotSupported as ex:
             if sys.platform == "win32":
-                raise RuntimeError("Failed to claim USB device, ensure that WinUSB driver has been loaded for it using Zadig") from ex
+                message = "Failed to claim USB device, ensure that WinUSB driver has been loaded for it using Zadig"
+                raise RuntimeError(message) from ex
             else:
                 raise
 
@@ -223,8 +232,7 @@ class CySerBridgeBase:
 
     def reset_device(self):
         """
-        The API will reset the device by sending a vendor request to the firmware. The device
-        will be re-enumerated.
+        The API will reset the device by sending a vendor request to the firmware. The device will be re-enumerated.
 
         After calling this function, the serial bridge object that you called it on will become
         nonfunctional and should be closed.  You must open a new instance of the driver
@@ -255,9 +263,11 @@ class CySerBridgeBase:
         :param buff: Buffer of data to write.  Must be a multiple of 128 bytes long.
         """
         if addr % USER_FLASH_PAGE_SIZE != 0 or len(buff) % USER_FLASH_PAGE_SIZE != 0 or len(buff) == 0:
-            raise ValueError("Program operation not aligned correctly!")
+            message = "Program operation not aligned correctly!"
+            raise ValueError(message)
         if addr < 0 or len(buff) + addr > USER_FLASH_SIZE:
-            raise ValueError("Program operation outside user flash bounds!")
+            message = "Program operation outside user flash bounds!"
+            raise ValueError(message)
 
         num_pages = len(buff) // USER_FLASH_PAGE_SIZE
         for page_idx in range(num_pages):
@@ -273,16 +283,19 @@ class CySerBridgeBase:
 
     def read_user_flash(self, addr: int, size: int) -> bytearray:
         """
-        Read from the user flash area (this can be programmed with program_user_flash(), see
-        that function for more details).
+        Read from the user flash area.
+
+        This area can be programmed with program_user_flash(), see that function for more details.
 
         :param addr: Address to start reading data from.  Must be a multiple of 128 and between 0 and 384.
         :param size: Count of data bytes to read.  Must be a multiple of 128.
         """
         if addr % USER_FLASH_PAGE_SIZE != 0 or size % USER_FLASH_PAGE_SIZE != 0 or size == 0:
-            raise ValueError("Read operation not aligned correctly!")
+            message = "Read operation not aligned correctly!"
+            raise ValueError(message)
         if addr < 0 or size + addr > USER_FLASH_SIZE:
-            raise ValueError("Read operation outside user flash bounds!")
+            message = "Read operation outside user flash bounds!"
+            raise ValueError(message)
 
         result_bytes = bytearray()
 
@@ -355,9 +368,8 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0xb1b0
         w_buffer = bytearray(0)
 
-        ret = self.dev.controlWrite(bm_request_type, bm_request,
+        return self.dev.controlWrite(bm_request_type, bm_request,
                                     w_value, w_index, w_buffer, self.timeout)
-        return ret
 
     def disconnect(self):
         """Send whatever USCU sends on disconnect"""
@@ -388,7 +400,7 @@ class CyMfgrIface(CySerBridgeBase):
         w_value = 0
         w_index = 0
 
-        w_buffer = config.bytes
+        w_buffer = config.config_bytes
 
         return self.dev.controlWrite(bm_request_type, bm_request,
                                     w_value, w_index, w_buffer, self.timeout)
@@ -417,6 +429,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
     def set_i2c_configuration(self, config: CyI2CConfig):
         """
         This API configures the I2C module of USB Serial device.
+
         Currently the only setting configurable for I2C master is the frequency.
 
         You should always call this function after first opening the device because the configuration rewriting part of
@@ -455,6 +468,4 @@ class CyI2CControllerBridge(CySerBridgeBase):
             timeout=self.timeout)
 
         config_unpacked = struct.unpack(CY_USB_I2C_CONFIG_STRUCT_LAYOUT, config_bytes)
-        config = CyI2CConfig(frequency=config_unpacked[0])
-
-        return config
+        return CyI2CConfig(frequency=config_unpacked[0])

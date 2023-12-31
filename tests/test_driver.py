@@ -1,9 +1,10 @@
 import logging
-import pytest
-import usb1
 import random
 
-from src import cy_serial_bridge
+import pytest
+import usb1
+
+import cy_serial_bridge
 
 """
 Test suite for the CY7C652xx driver.
@@ -17,7 +18,7 @@ VID = 0x04b4
 PID = 0x0004
 
 
-@pytest.fixture
+@pytest.fixture()
 def serial_bridge() -> usb1.USBDevice:
     """
     Fixture which finds a serial bridge USB device
@@ -31,15 +32,14 @@ def test_i2c_config_set_get(serial_bridge: usb1.USBDevice):
     """
     Test that we can get and set the I2C controller mode config for the USB device
     """
-
     # Enable more detailed logs during the tests
     logging.basicConfig(level=logging.INFO)
-    src.cy_serial_bridge.utils.log.setLevel(logging.INFO)
+    cy_serial_bridge.utils.log.setLevel(logging.INFO)
 
-    with src.cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
+    with cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
 
         print("Setting speed to 400kHz...")
-        max_speed_config = src.cy_serial_bridge.driver.CyI2CConfig(400000)
+        max_speed_config = cy_serial_bridge.driver.CyI2CConfig(400000)
         dev.set_i2c_configuration(max_speed_config)
 
         curr_config = dev.read_i2c_configuration()
@@ -47,7 +47,7 @@ def test_i2c_config_set_get(serial_bridge: usb1.USBDevice):
         assert curr_config == max_speed_config
 
         print("Setting speed to 50kHz...")
-        low_speed_config = src.cy_serial_bridge.driver.CyI2CConfig(50000)
+        low_speed_config = cy_serial_bridge.driver.CyI2CConfig(50000)
         dev.set_i2c_configuration(low_speed_config)
 
         curr_config = dev.read_i2c_configuration()
@@ -59,10 +59,9 @@ def test_user_flash(serial_bridge: usb1.USBDevice):
     """
     Test ability to use the user flash programming functionality of the device
     """
-
     # Note: the mode that we open the device in doesn't really matter, it can be anything
     # for this test
-    with src.cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
+    with cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
 
         # Create a random 8-digit number which will be used in the test.
         # This ensures the flash is actually getting programmed and we aren't just reusing old data.

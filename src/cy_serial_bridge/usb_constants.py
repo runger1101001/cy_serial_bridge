@@ -36,6 +36,7 @@ class CyClass(IntEnum):
 class CyType(IntEnum):
     """
     Enumeration of possible device types and their integer codes.
+
     From CyUSBSerial.h.
     This code is used in the configuration descriptor and also is returned as the interface settings subclass
     (USBInterfaceSetting.getSubClass()) when enumerating devices.
@@ -136,6 +137,7 @@ class CyUart(IntEnum):
 # Bootloader related macros
 CY_BOOT_CONFIG_SIZE = 64
 CY_DEVICE_CONFIG_SIZE = 512
+CY_CONFIG_STRING_MAX_LEN_BYTES = 64
 CY_FIRMWARE_BREAKUP_SIZE = 4096
 CY_GET_SILICON_ID_LEN = 4
 CY_GET_FIRMWARE_VERSION_LEN = 8

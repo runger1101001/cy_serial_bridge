@@ -10,8 +10,7 @@ out and API/code/tools need further refactoring.
 
 import usb1  # from "libusb1" package
 
-from src.cy_serial_bridge import configuration_block
-from src.cy_serial_bridge import driver
+from src.cy_serial_bridge import configuration_block, driver
 from src.cy_serial_bridge.configuration_block import CyType
 from src.cy_serial_bridge.usb_constants import *
 from src.cy_serial_bridge.utils import ByteSequence
@@ -465,7 +464,7 @@ class CyUSB:
         w_value = 0
         w_index = 0
 
-        w_buffer = config.bytes
+        w_buffer = config.config_bytes
 
         ret = self.dev.controlWrite(bm_request_type, bm_request,
                                     w_value, w_index, w_buffer, self.timeout)

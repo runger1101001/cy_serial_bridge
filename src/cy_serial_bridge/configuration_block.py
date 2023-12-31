@@ -3,10 +3,12 @@ from __future__ import annotations
 import pathlib
 import re
 import struct
-from typing import Optional, Union
+from typing import TYPE_CHECKING
 
-from src.cy_serial_bridge.usb_constants import CyType
-from src.cy_serial_bridge.utils import ByteSequence
+from src.cy_serial_bridge.usb_constants import CY_CONFIG_STRING_MAX_LEN_BYTES, CY_DEVICE_CONFIG_SIZE, CyType
+
+if TYPE_CHECKING:
+    from src.cy_serial_bridge.utils import ByteSequence
 
 CONFIG_BLOCK_EXPECTED_MAGIC = b"CYUS"
 CONFIG_BLOCK_EXPECTED_MAJOR_VERSION = 1
@@ -23,7 +25,7 @@ class ConfigurationBlock:
     This class is based on the reverse-engineered description of the format located here: https://github.com/tai/cyusb-hack/blob/master/config.txt
     """
 
-    def __init__(self, block_file: Optional[Union[pathlib.Path, str]] = None, block_bytes: Optional[ByteSequence] = None):
+    def __init__(self, block_file: pathlib.Path | str | None = None, block_bytes: ByteSequence | None = None):
         """
         Create a configuration_block from a file or byte array.  Must pass either a file path OR a bytes object.
 
@@ -31,7 +33,8 @@ class ConfigurationBlock:
         :param block_bytes:
         """
         if (block_bytes is None and block_file is None) or (block_bytes is not None and block_file is not None):
-            raise ValueError("Invalid usage!")
+            message = "Invalid usage!"
+            raise ValueError(message)
 
         if block_file is not None:
             # Load bytes from file.
@@ -39,21 +42,25 @@ class ConfigurationBlock:
         elif block_bytes is not None:
             self._cfg_bytes = bytearray(block_bytes)
 
-        if len(self._cfg_bytes) < 512:
-            raise ValueError("Configuration block data is not long enough (should be 512 bytes)")
+        if len(self._cfg_bytes) < CY_DEVICE_CONFIG_SIZE:
+            message = f"Configuration block data is not long enough (should be {CY_DEVICE_CONFIG_SIZE} bytes)"
+            raise ValueError(message)
 
         # Some dumps contain extra bytes so trim to 512 bytes.
-        self._cfg_bytes = self._cfg_bytes[:513]
+        self._cfg_bytes = self._cfg_bytes[:CY_DEVICE_CONFIG_SIZE + 1]
 
         # Check magic, format, and checksum
         if self._cfg_bytes[0:4] != CONFIG_BLOCK_EXPECTED_MAGIC:
-            raise ValueError("Incorrect magic at start of configuration block")
+            message = "Incorrect magic at start of configuration block"
+            raise ValueError(message)
         if self.config_format_version[0] != CONFIG_BLOCK_EXPECTED_MAJOR_VERSION:
-            raise ValueError(f"Only know how to work with config block major version {CONFIG_BLOCK_EXPECTED_MAJOR_VERSION} this is 0x{self.config_format_version[0]}")
+            message = f"Only know how to work with config block major version {CONFIG_BLOCK_EXPECTED_MAJOR_VERSION} this is 0x{self.config_format_version[0]}"
+            raise ValueError(message)
         if self._get_checksum() != self._calculate_checksum():
-            raise ValueError(f"Checksum failed for configuration block.  Expected 0x{self._calculate_checksum():x} but read 0x{self._get_checksum():x} from header")
+            message = f"Checksum failed for configuration block.  Expected 0x{self._calculate_checksum():x} but read 0x{self._get_checksum():x} from header"
+            raise ValueError(message)
 
-    def _decode_string_field(self, flag_addr, data_start_addr) -> Optional[str]:
+    def _decode_string_field(self, flag_addr, data_start_addr) -> str | None:
         """
         Decode a variable-length string from the config block.
 
@@ -78,9 +85,10 @@ class ConfigurationBlock:
         elif self._cfg_bytes[flag_addr:flag_addr + 4] == b"\x00\x00\x00\x00":
             return None
         else:
-            raise ValueError("Unparseable data in descriptor")
+            message = "Unparseable data in descriptor"
+            raise ValueError(message)
 
-    def _encode_string_field(self, flag_addr, data_start_addr, value: Optional[str]):
+    def _encode_string_field(self, flag_addr, data_start_addr, value: str | None):
         """
         Encode a variable-length string from the config block.
 
@@ -91,13 +99,14 @@ class ConfigurationBlock:
         if value is None:
             self._cfg_bytes[flag_addr:flag_addr+4] = b"\x00\x00\x00\x00" # Set present flag to false
             self._cfg_bytes[data_start_addr] = 2 # Set length to 0 chars (can't forget the 2 offset)
-            self._cfg_bytes[data_start_addr+2:data_start_addr+66] = 64 * b"\x00" # Zero out data
+            self._cfg_bytes[data_start_addr+2:data_start_addr+CY_CONFIG_STRING_MAX_LEN_BYTES+2] = CY_CONFIG_STRING_MAX_LEN_BYTES * b"\x00" # Zero out data
         else:
             # Write data (padded with 0s)
             encoded_string = value.encode("utf-16-le")
-            if len(encoded_string) > 64:
-                raise ValueError("String value to long to fit in binary configuration block!")
-            self._cfg_bytes[data_start_addr+2:data_start_addr+66] = encoded_string + (64 - len(encoded_string)) * b"\x00"
+            if len(encoded_string) > CY_CONFIG_STRING_MAX_LEN_BYTES:
+                message = "String value to long to fit in binary configuration block!"
+                raise ValueError(message)
+            self._cfg_bytes[data_start_addr+2:data_start_addr+CY_CONFIG_STRING_MAX_LEN_BYTES+2] = encoded_string + (CY_CONFIG_STRING_MAX_LEN_BYTES - len(encoded_string)) * b"\x00"
 
             self._cfg_bytes[data_start_addr] = len(encoded_string) + 2 # Set length
             self._cfg_bytes[flag_addr:flag_addr+4] = b"\xff\xff\xff\xff" # Set present flag to true
@@ -165,7 +174,7 @@ class ConfigurationBlock:
         self._cfg_bytes[0x96:0x98] = struct.pack("<H", (value))
 
     @property
-    def mfgr_string(self) -> Optional[str]:
+    def mfgr_string(self) -> str | None:
         """
         Manufacturer String of the device.  Up to 32 characters (seems to be UTF-16 type encoded in descriptor).
 
@@ -174,11 +183,11 @@ class ConfigurationBlock:
         return self._decode_string_field(0xa0, 0xee)
 
     @mfgr_string.setter
-    def mfgr_string(self, value: Optional[str]):
+    def mfgr_string(self, value: str | None):
         self._encode_string_field(0xa0, 0xee, value)
 
     @property
-    def product_string(self) -> Optional[str]:
+    def product_string(self) -> str | None:
         """
         Product String of the device.  Up to 32 characters (seems to be UTF-16 type encoded in descriptor).
 
@@ -187,11 +196,11 @@ class ConfigurationBlock:
         return self._decode_string_field(0xa4, 0x130)
 
     @product_string.setter
-    def product_string(self, value: Optional[str]):
+    def product_string(self, value: str | None):
         self._encode_string_field(0xa4, 0x130, value)
 
     @property
-    def serial_number(self) -> Optional[str]:
+    def serial_number(self) -> str | None:
         """
         Serial Number of the device.  Up to 32 characters (seems to be UTF-16 type encoded in descriptor).
 
@@ -201,16 +210,17 @@ class ConfigurationBlock:
         return self._decode_string_field(0xa8, 0x172)
 
     @serial_number.setter
-    def serial_number(self, value: Optional[str]):
+    def serial_number(self, value: str | None):
         if value is not None and re.fullmatch(r"[0-9a-zA-Z]+", value) is None:
-            raise ValueError("Serial number may only be set to alphanumeric characters")
+            message = "Serial number may only be set to alphanumeric characters"
+            raise ValueError(message)
 
         self._encode_string_field(0xa8, 0x172, value)
 
     @property
-    def bytes(self):
+    def config_bytes(self):
         """
-        Get the raw bytes for this buffer.
+        Get the raw configuration bytes for this buffer.
 
         Calling this function also updates the checksum to account for any changes made to the bytes since
         the config block was updated.
