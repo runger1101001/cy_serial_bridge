@@ -23,7 +23,7 @@ def serial_bridge() -> usb1.USBDevice:
     """
     Fixture which finds a serial bridge USB device
     """
-    found = list(cy_serial_bridge.find_device(VID, PID))
+    found = list(cy_serial_bridge.driver.find_device(VID, PID))
     assert len(found) >= 1
     return found[0]
 
@@ -96,3 +96,18 @@ def test_user_flash(serial_bridge: usb1.USBDevice):
         print("Read page 3 only: " + repr(page_3_mem))
         assert page_3_mem == page_3_bytes
 
+
+def test_i2c_read_write(serial_bridge: usb1.USBDevice):
+    """
+    Test sending I2C read and write transactions
+    """
+
+    with cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
+        dev.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(400000))
+
+        # Try a 1 byte read from the EEPROM address to make sure it ACKs
+        dev.i2c_read(0x51, 1)
+
+        # Try a 1 byte read from an incorrect address to make sure it does not ACK
+        with pytest.raises(cy_serial_bridge.I2CNACKException):
+            dev.i2c_read(0x61, 1)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator, Tuple, cast
+from math import ceil
 
 import usb1  # from 'libusb1' package
 
@@ -23,6 +24,31 @@ modules.
 usb_context = usb1.USBContext()
 usb_context.open()
 
+
+# Exception class for the driver library
+class CySerialBridgeException(Exception):
+    pass
+
+
+# Exceptions for recoverable I2C errors
+class I2CNACKException(CySerialBridgeException):
+    """
+    This is thrown when an I2C operation is not acknowledged
+    """
+
+    pass
+
+class I2CBusErrorException(CySerialBridgeException):
+    """
+    This is thrown when a bus error occurs during an I2C operation
+    """
+    pass
+
+class I2CArbLostException(CySerialBridgeException):
+    """
+    This is thrown when arbitration is lost during an I2C operation
+    """
+    pass
 
 def find_device(vid=None, pid=None) -> Iterator[usb1.USBDevice]:
     """Finds USB device by VID/PID"""
@@ -74,14 +100,19 @@ class CySerBridgeBase:
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for USB operations in milliseconds
         """
+
+        if scb_index > 1:
+            message = "scb_index cannot be higher than 1!"
+            raise ValueError(message)
+
         self.scb_index = scb_index
         found = list(find_type(ud, cy_type))
         if not found:
             message = "No device found with given type"
-            raise RuntimeError(message)
+            raise CySerialBridgeException(message)
         if len(found) - 1 > scb_index:
             message = "Not enough interfaces (SCBs) found"
-            raise RuntimeError(message)
+            raise CySerialBridgeException(message)
 
         # setup parameters
         us: usb1.USBInterfaceSetting
@@ -108,9 +139,9 @@ class CySerBridgeBase:
             elif ep_attr == EP_INTR:
                 self.ep_intr = ep_addr
 
-        # TODO why doesn't this check work?  Need to debug
-        # if self.ep_in is None or self.ep_out is None or self.ep_intr is None:
-        #     raise RuntimeError("Failed to find CY7C652xx USB endpoints in USB device -- not a Cypress serial bridge device?")
+        if cy_type != CyType.MFG:
+            if self.ep_in is None or self.ep_out is None or self.ep_intr is None:
+                raise CySerialBridgeException("Failed to find CY7C652xx USB endpoints in USB device -- not a Cypress serial bridge device?")
 
         log.info("Discovered USB endpoints successfully")
 
@@ -120,7 +151,7 @@ class CySerBridgeBase:
         except usb1.USBErrorNotFound as ex:
             if sys.platform == "win32":
                 message = "Failed to open USB device, ensure that WinUSB driver has been loaded for it using Zadig"
-                raise RuntimeError(message) from ex
+                raise CySerialBridgeException(message) from ex
             else:
                 raise
 
@@ -152,7 +183,7 @@ class CySerBridgeBase:
                 self.close()
 
                 message = "Invalid signature for CY7C652xx device"
-                raise RuntimeError(message)
+                raise CySerialBridgeException(message)
 
             # Get and print the firmware version
             firmware_version = self.get_firmware_version()
@@ -161,7 +192,7 @@ class CySerBridgeBase:
         except usb1.USBErrorNotSupported as ex:
             if sys.platform == "win32":
                 message = "Failed to claim USB device, ensure that WinUSB driver has been loaded for it using Zadig"
-                raise RuntimeError(message) from ex
+                raise CySerialBridgeException(message) from ex
             else:
                 raise
 
@@ -424,7 +455,58 @@ class CyI2CControllerBridge(CySerBridgeBase):
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for USB operations in milliseconds
         """
-        super().__init__(ud, CyType.MFG, scb_index, timeout)
+        super().__init__(ud, CyType.I2C, scb_index, timeout)
+
+        self._curr_frequency: int | None = None
+
+    def __enter__(self):
+        super().__enter__()
+
+        # Reset the I2C peripheral in case it was in a bad state (e.g. if a previous errored operation
+        # was not cleaned up)
+        self._i2c_reset(CyI2c.MODE_READ)
+        self._i2c_reset(CyI2c.MODE_WRITE)
+
+        # Should be in a good state now
+        if self._get_i2c_status(CyI2c.MODE_READ)[0] & CyI2c.ERROR_BIT:
+            message = "I2C read interface is not ready!"
+            raise CySerialBridgeException(message)
+        if self._get_i2c_status(CyI2c.MODE_WRITE)[0] & CyI2c.ERROR_BIT:
+            message = "I2C write interface is not ready!"
+            raise CySerialBridgeException(message)
+
+        return self
+
+    def _get_i2c_status(self, mode: CyI2c) -> bytes:
+        """
+        Get the I2C status flag from the chip.
+
+        This is a 4 byte bitfield (whose values are mostly not documented) which is used by the I2C code to
+        check what the chip is doing.
+
+        :param mode: Either CyI2c.MODE_WRITE or CyI2c.MODE_READ
+        """
+        return self.dev.controlRead(
+            request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
+            request=CyVendorCmds.CY_I2C_GET_STATUS_CMD,
+            value=(self.scb_index << CyI2c.SCB_INDEX_POS) | mode,
+            index=0,
+            length=CyI2c.GET_STATUS_LEN,
+            timeout=self.timeout)
+
+    def _i2c_reset(self, mode: CyI2c) -> bytes:
+        """
+        This API resets the read or write I2C module whenever there is an error in a data transaction.
+
+        :param mode: Either CyI2c.MODE_WRITE or CyI2c.MODE_READ
+        """
+        return self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_I2C_RESET_CMD,
+            value=(self.scb_index << CyI2c.SCB_INDEX_POS) | mode,
+            index=0,
+            data=bytes(),
+            timeout=self.timeout)
 
     def set_i2c_configuration(self, config: CyI2CConfig):
         """
@@ -437,6 +519,8 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         Note: Using this API during an active transaction of I2C may result in data loss.
         """
+        self._curr_frequency = config.frequency
+
         binary_configuration = struct.pack(CY_USB_I2C_CONFIG_STRUCT_LAYOUT,
         config.frequency,
             0,  # sAddress - seems to be ignored in master mode
@@ -468,4 +552,95 @@ class CyI2CControllerBridge(CySerBridgeBase):
             timeout=self.timeout)
 
         config_unpacked = struct.unpack(CY_USB_I2C_CONFIG_STRUCT_LAYOUT, config_bytes)
-        return CyI2CConfig(frequency=config_unpacked[0])
+        config = CyI2CConfig(frequency=config_unpacked[0])
+
+        self._curr_frequency = config.frequency
+
+        return config
+
+    def i2c_read(self, periph_addr: int, size: int, relinquish_bus: bool = True, io_timeout: int | None = None) -> ByteSequence:
+        """
+        Perform an I2C read from the given peripheral device.
+
+        :param periph_addr: Address of the peripheral to read from
+        :param size: Number of bytes to attempt to read
+        :param relinquish_bus: If true, give up the bus at the end.  Otherwise, a stop condition will not be generated,
+            so a repeated start will be performed on the next transfer.
+        :param io_timeout: Timeout for the transfer in ms.  Leave empty to compute a reasonable timeout automatically.
+            Set to 0 to wait forever.
+        """
+
+        if self._curr_frequency is None:
+            message = "Must call set_i2c_configuration() before reading or writing data!"
+            raise CySerialBridgeException(message)
+
+        # For a reasonable timeout, assume it takes 10 bit times per byte sent,
+        # and also allow 1 extra second for any USB overhead.
+        if io_timeout is None:
+            io_timeout = 1000 + ceil(1000 * (1/self._curr_frequency) * 10)
+
+        initial_status = self._get_i2c_status(CyI2c.MODE_READ)
+
+        if initial_status[0] & CyI2c.ERROR_BIT:
+            message = "Device is busy but tried to start another read!"
+            raise CySerialBridgeException(message)
+
+        # Bits 0 and 1 of the value control stop bit generation and NAK generation at the end of the read.
+        # We always want to NAK the slave at the end of the read as it's required by the standard...
+        value = (periph_addr << 8) | 0b10 | (1 if relinquish_bus else 0)
+
+        # Set up transfer
+        self.dev.controlWrite(request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+                              request=CyVendorCmds.CY_I2C_READ_CMD,
+                              value=value,
+                              index=size,
+                              data=bytes(),
+                              timeout=io_timeout)
+
+        # Get data
+        try:
+            read_data = self.dev.bulkRead(self.ep_in, size, timeout=self.timeout)
+            post_transfer_status = self.dev.interruptRead(self.ep_intr, CyI2c.EVENT_NOTIFICATION_LEN, io_timeout)
+
+        except usb1.USBErrorPipe as ex:
+            # Attempt to handle pipe errors similarly to how the original driver did.
+            # Basically, we reset the hardware and re-query the status.
+
+            # Try and reset the endpoint
+            self.dev.clearHalt(self.ep_in)
+
+            # Recheck the status
+            post_transfer_status = self._get_i2c_status(CyI2c.MODE_READ)
+
+            # The status should indicate some sort of error
+            if not post_transfer_status[0] & CyI2c.ERROR_BIT:
+                message = "Operation failed with pipe error, but did not detect an I2C comms error?"
+                raise CySerialBridgeException(message) from ex
+
+        if post_transfer_status[0] & CyI2c.ERROR_BIT:
+            self._i2c_reset(CyI2c.MODE_READ)
+
+            # Finally, handle the error
+            if post_transfer_status[0] & CyI2c.ARBITRATION_ERROR_BIT:
+                raise I2CArbLostException()
+            elif post_transfer_status[0] & CyI2c.NAK_ERROR_BIT:
+                raise I2CNACKException()
+            elif post_transfer_status[0] & CyI2c.BUS_ERROR_BIT:
+                raise I2CBusErrorException()
+            else:
+                message = "I2C operation failed with status " + repr(post_transfer_status)
+                raise CySerialBridgeException(message)
+
+
+                #
+                # # Partial transfer, we should only have received some of the requested data
+                # partial_transfer_len = struct.unpack("<H", transfer_status[1:3])[0]
+                #
+                # # From my testing, partial_transfer_len seems to be 1 higher than expected, e.g.
+                # # the chip returns 1 when the address byte was NACKed
+                # partial_transfer_len -= 1
+                #
+                # if len(read_data) != partial_transfer_len:
+                #     message = "Partial read but length doesn't match?"
+                #     raise CySerialBridgeException(message)
+
