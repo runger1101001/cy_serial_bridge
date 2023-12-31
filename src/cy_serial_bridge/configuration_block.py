@@ -5,8 +5,8 @@ import re
 import struct
 from typing import Optional, Union
 
-from cy_serial_bridge.usb_constants import CyType
-from cy_serial_bridge.utils import ByteSequence
+from src.cy_serial_bridge.usb_constants import CyType
+from src.cy_serial_bridge.utils import ByteSequence
 
 CONFIG_BLOCK_EXPECTED_MAGIC = b"CYUS"
 CONFIG_BLOCK_EXPECTED_MAJOR_VERSION = 1

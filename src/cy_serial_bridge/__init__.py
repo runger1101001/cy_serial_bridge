@@ -7,22 +7,14 @@ details are discovered, but information still needs to be cleaned
 out and API/code/tools need further refactoring.
 
 """
-import collections.abc
-import logging
-import os
-import struct
-import sys
-from enum import Enum, IntEnum
-from struct import pack, unpack
-from typing import Iterator, Tuple
 
 import usb1  # from "libusb1" package
-from usb1 import USBContext, USBInterfaceSetting
 
-from cy_serial_bridge import configuration_block, driver
-from cy_serial_bridge.configuration_block import CyType
-from cy_serial_bridge.usb_constants import *
-from cy_serial_bridge.utils import ByteSequence, log
+from src.cy_serial_bridge import configuration_block
+from src.cy_serial_bridge import driver
+from src.cy_serial_bridge.configuration_block import CyType
+from src.cy_serial_bridge.usb_constants import *
+from src.cy_serial_bridge.utils import ByteSequence
 
 # For now, just use one global context.  This might have to be changed later but seems OK for initial development.
 usb_context = usb1.USBContext()

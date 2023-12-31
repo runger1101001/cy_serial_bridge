@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import struct
 import sys
 from dataclasses import dataclass
 from typing import Iterator, Tuple, cast
 
-import usb1
-
-from cy_serial_bridge.configuration_block import ConfigurationBlock
-from cy_serial_bridge.usb_constants import *
-from cy_serial_bridge.utils import ByteSequence, log
+from src.cy_serial_bridge.configuration_block import ConfigurationBlock
+from src.cy_serial_bridge.usb_constants import *
+from src.cy_serial_bridge.utils import ByteSequence, log
 
 """
 Module containing the logic for communicating with the CY7C652xx USB device.

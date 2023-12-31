@@ -4,8 +4,8 @@ import random
 import sys
 from argparse import ArgumentParser
 
-import cy_serial_bridge
-from cy_serial_bridge.utils import log
+from src import cy_serial_bridge
+from src.cy_serial_bridge.utils import log
 
 VID = 0x04b4
 PID = 0x0004
@@ -15,7 +15,7 @@ def main(opt):
 
     if cmd == "decode":
         # Just decode the configuration block, then exit.
-        cfg_block = cy_serial_bridge.configuration_block.ConfigurationBlock(*opt.args[1:])
+        cfg_block = src.cy_serial_bridge.configuration_block.ConfigurationBlock(*opt.args[1:])
         print(str(cfg_block))
         return
 
@@ -33,7 +33,7 @@ def main(opt):
 
     log.info("Connecting...")
 
-    with cy_serial_bridge.driver.CyMfgrIface(ud, scb_index=opt.scb) as dev:
+    with src.cy_serial_bridge.driver.CyMfgrIface(ud, scb_index=opt.scb) as dev:
         if cmd == "save": do_save(dev, *opt.args[1:])
         if cmd == "load": do_load(dev, *opt.args[1:])
         if cmd == "type": do_change_type(dev, *opt.args[1:])
@@ -73,7 +73,7 @@ def do_save(dev: cy_serial_bridge.CyUSB, file):
     dev.disconnect()
 
     # As a sanity check, parse the bytes to make sure the checksum is valid
-    config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(block_bytes=buf)
+    config_block = src.cy_serial_bridge.configuration_block.ConfigurationBlock(block_bytes=buf)
     log.info("Read the following configuration from the device: %s", str(config_block))
 
     # Save to file
@@ -82,7 +82,7 @@ def do_save(dev: cy_serial_bridge.CyUSB, file):
 
 def do_load(dev: cy_serial_bridge.CyUSB, file):
     # Load bytes and check checksum
-    config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(file)
+    config_block = src.cy_serial_bridge.configuration_block.ConfigurationBlock(file)
 
     log.info("Writing the following configuration to the device: %s", str(config_block))
 
@@ -103,7 +103,7 @@ def do_randomize_serno(dev: cy_serial_bridge.CyUSB):
     try:
         buffer = dev.read_config()
 
-        config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(block_bytes=buffer)
+        config_block = src.cy_serial_bridge.configuration_block.ConfigurationBlock(block_bytes=buffer)
         log.info("Read the following configuration from the device: %s", str(config_block))
 
         # Generate a random integer with 32 digits
@@ -129,7 +129,7 @@ def do_randomize_serno(dev: cy_serial_bridge.CyUSB):
         raise
 
 
-def do_change_type(dev: cy_serial_bridge.driver.CyMfgrIface, type_string: str):
+def do_change_type(dev: src.cy_serial_bridge.driver.CyMfgrIface, type_string: str):
 
     # Convert/validate type
     # Note: There is also a "JTAG" device class which can be set, but I'm unsure if this is actually
@@ -148,7 +148,7 @@ def do_change_type(dev: cy_serial_bridge.driver.CyMfgrIface, type_string: str):
     try:
         buffer = dev.read_config()
 
-        config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(block_bytes=buffer)
+        config_block = src.cy_serial_bridge.configuration_block.ConfigurationBlock(block_bytes=buffer)
         log.info("Read the following configuration from the device: %s", str(config_block))
 
         # Change the type
