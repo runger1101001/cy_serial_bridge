@@ -147,6 +147,7 @@ ignore = [
     'RET505',  # Unnecessary `elif` after `return` statement
     'RET506',  # Unnecessary `else` after `raise` statement
     'S311',    # Allow use of `random` module
+    'TRY003',  # Inline exception messages - Redundant with EM101
 ]
 ignore-init-module-imports = true
 line-length = 120
@@ -160,8 +161,8 @@ docstring-quotes = 'double'
 multiline-quotes = 'double'
 
 [tool.ruff.mccabe]
-# Unlike Flake8, default to a complexity level of 10.
-max-complexity = 10
+# Unlike Flake8, default to a complexity level of 15.
+max-complexity = 15
 
 [tool.ruff.per-file-ignores]
 # https://beta.ruff.rs/docs/rules/

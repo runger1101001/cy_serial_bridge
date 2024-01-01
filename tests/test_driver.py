@@ -17,6 +17,8 @@ changes are required, so you will be prompted to make changes
 VID = 0x04b4
 PID = 0x0004
 
+# Eval kit has a 24LC128 EEPROM with A[2..0] = 001
+EEPROM_I2C_ADDRESS = 0x51
 
 @pytest.fixture()
 def serial_bridge() -> usb1.USBDevice:
@@ -101,7 +103,6 @@ def test_i2c_read_write(serial_bridge: usb1.USBDevice):
     """
     Test sending I2C read and write transactions
     """
-
     with cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
         dev.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(400000))
 
@@ -109,5 +110,5 @@ def test_i2c_read_write(serial_bridge: usb1.USBDevice):
         dev.i2c_read(0x51, 1)
 
         # Try a 1 byte read from an incorrect address to make sure it does not ACK
-        with pytest.raises(cy_serial_bridge.I2CNACKException):
-            dev.i2c_read(0x61, 1)
+        with pytest.raises(cy_serial_bridge.I2CNACKError):
+            dev.i2c_read(EEPROM_I2C_ADDRESS + 0x10, 1)

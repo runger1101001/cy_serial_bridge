@@ -28,10 +28,10 @@ def main(opt):
 
     # ux == USB Device/Configuration/Interface/Setting/Endpoint
     ud = found[opt.nth]
-    uc = ud[0]
-    ui = uc[0]
-    us = ui[0]
-    ue = us[0]
+    # uc = ud[0]
+    # ui = uc[0]
+    # us = ui[0]
+    # ue = us[0]
 
     log.info("Connecting...")
 
