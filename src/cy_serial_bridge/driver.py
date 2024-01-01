@@ -52,8 +52,10 @@ class I2CArbLostError(CySerialBridgeError):
 def find_device(vid=None, pid=None) -> Iterator[usb1.USBDevice]:
     """Finds USB device by VID/PID"""
     for dev in usb_context.getDeviceList(skip_on_error=True):
-        if vid and dev.getVendorID()  != vid: continue
-        if pid and dev.getProductID() != pid: continue
+        if vid and dev.getVendorID() != vid:
+            continue
+        if pid and dev.getProductID() != pid:
+            continue
         yield dev
 
 
@@ -80,8 +82,10 @@ def get_type(us):
 
 def find_type(ud: usb1.USBDevice, cy_type):
     """Finds USB interface by CY_TYPE. Yields list of (us, ui, uc, ud) set"""
+
     def check_match(ux):
         return isinstance(ux, usb1.USBInterfaceSetting) and get_type(ux) == cy_type
+
     yield from find_path(ud, check_match, [])
 
 
@@ -159,7 +163,6 @@ class CySerBridgeBase:
             self.dev.setAutoDetachKernelDriver(True)
 
     def __enter__(self):
-
         try:
             #
             # NOTE:
@@ -176,7 +179,6 @@ class CySerBridgeBase:
             signature = bytes(self.get_signature())
             log.info("Device signature: %s", repr(signature))
             if signature != b"CYUS":
-
                 # __exit__ won't be called if we raise an exception here
                 self.dev.releaseInterface(self.if_num)
                 self.close()
@@ -230,8 +232,9 @@ class CySerBridgeBase:
         w_index = 0
         w_length = CY_GET_FIRMWARE_VERSION_LEN
 
-        firmware_version_bytes = self.dev.controlRead(bm_request_type, bm_request,
-                                   w_value, w_index, w_length, self.timeout)
+        firmware_version_bytes = self.dev.controlRead(
+            bm_request_type, bm_request, w_value, w_index, w_length, self.timeout
+        )
 
         # C definition:
         # typedef struct _CY_FIRMWARE_VERSION {
@@ -257,8 +260,7 @@ class CySerBridgeBase:
         w_index = 0
         w_length = CY_GET_SIGNATURE_LEN
 
-        return self.dev.controlRead(bm_request_type, bm_request,
-                                   w_value, w_index, w_length, self.timeout)
+        return self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
 
     def reset_device(self):
         """
@@ -277,8 +279,7 @@ class CySerBridgeBase:
         # Resetting the device always seems to result in a pipe error -- it seems like the
         # low level USB control operation always returns USBD_STATUS_XACT_ERROR (0xc0000011)
         try:
-            self.dev.controlWrite(bm_request_type, bm_request,
-                                   w_value, w_index, data, self.timeout)
+            self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, data, self.timeout)
         except usb1.USBErrorPipe:
             return
 
@@ -302,14 +303,15 @@ class CySerBridgeBase:
         num_pages = len(buff) // USER_FLASH_PAGE_SIZE
         for page_idx in range(num_pages):
             first_byte_idx = page_idx * USER_FLASH_PAGE_SIZE
-            bytes_to_send = buff[first_byte_idx:first_byte_idx+USER_FLASH_PAGE_SIZE]
+            bytes_to_send = buff[first_byte_idx : first_byte_idx + USER_FLASH_PAGE_SIZE]
             self.dev.controlWrite(
                 request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
                 request=CyVendorCmds.CY_PROG_USER_FLASH_CMD,
                 value=0,
                 index=addr + first_byte_idx,
                 data=bytes_to_send,
-                timeout=self.timeout)
+                timeout=self.timeout,
+            )
 
     def read_user_flash(self, addr: int, size: int) -> bytearray:
         """
@@ -337,7 +339,8 @@ class CySerBridgeBase:
                 value=0,
                 index=addr + page_idx * USER_FLASH_PAGE_SIZE,
                 length=USER_FLASH_PAGE_SIZE,
-                timeout=self.timeout)
+                timeout=self.timeout,
+            )
             result_bytes.extend(page_bytes)
 
         return result_bytes
@@ -373,8 +376,7 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0
         w_buffer = bytearray(0)
 
-        return self.dev.controlWrite(bm_request_type, bm_request,
-                                    w_value, w_index, w_buffer, self.timeout)
+        return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
 
     def probe0(self):
         """Send whatever USCU sends on startup - some signature?"""
@@ -384,8 +386,7 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0
         w_length = 4
 
-        return self.dev.controlRead(bm_request_type, bm_request,
-                                   w_value, w_index, w_length, self.timeout)
+        return self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
 
     # Note that there used to be a "probe1" function here for another mystery sequence, but that was revealed to be just
     # getting the firmware version (equivalent to get_firmware_version())
@@ -394,23 +395,21 @@ class CyMfgrIface(CySerBridgeBase):
         """Send whatever USCU sends on connect"""
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
         bm_request = 226
-        w_value = 0xa6bc
-        w_index = 0xb1b0
+        w_value = 0xA6BC
+        w_index = 0xB1B0
         w_buffer = bytearray(0)
 
-        return self.dev.controlWrite(bm_request_type, bm_request,
-                                    w_value, w_index, w_buffer, self.timeout)
+        return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
 
     def disconnect(self):
         """Send whatever USCU sends on disconnect"""
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
         bm_request = 226
-        w_value = 0xa6bc
-        w_index = 0xb9b0
+        w_value = 0xA6BC
+        w_index = 0xB9B0
         w_buffer = bytearray(0)
 
-        return self.dev.controlWrite(bm_request_type, bm_request,
-                                    w_value, w_index, w_buffer, self.timeout)
+        return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
 
     def read_config(self) -> ByteSequence:
         """Send whatever USCU sends on config read"""
@@ -420,8 +419,7 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0
         w_length = 512
 
-        return self.dev.controlRead(bm_request_type, bm_request,
-                                   w_value, w_index, w_length, self.timeout)
+        return self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
 
     def write_config(self, config: ConfigurationBlock):
         """Send whatever USCU sends on config write"""
@@ -432,13 +430,12 @@ class CyMfgrIface(CySerBridgeBase):
 
         w_buffer = config.config_bytes
 
-        return self.dev.controlWrite(bm_request_type, bm_request,
-                                    w_value, w_index, w_buffer, self.timeout)
+        return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
 
 
 @dataclass
 class CyI2CConfig:
-    frequency: int = 400000 # I2C frequency in Hz
+    frequency: int = 400000  # I2C frequency in Hz
 
 
 class CyI2CControllerBridge(CySerBridgeBase):
@@ -491,7 +488,8 @@ class CyI2CControllerBridge(CySerBridgeBase):
             value=(self.scb_index << CyI2c.SCB_INDEX_POS) | mode,
             index=0,
             length=CyI2c.GET_STATUS_LEN,
-            timeout=self.timeout)
+            timeout=self.timeout,
+        )
 
     def _i2c_reset(self, mode: CyI2c) -> bytes:
         """
@@ -505,7 +503,8 @@ class CyI2CControllerBridge(CySerBridgeBase):
             value=(self.scb_index << CyI2c.SCB_INDEX_POS) | mode,
             index=0,
             data=b"",
-            timeout=self.timeout)
+            timeout=self.timeout,
+        )
 
     def set_i2c_configuration(self, config: CyI2CConfig):
         """
@@ -520,8 +519,9 @@ class CyI2CControllerBridge(CySerBridgeBase):
         """
         self._curr_frequency = config.frequency
 
-        binary_configuration = struct.pack(CY_USB_I2C_CONFIG_STRUCT_LAYOUT,
-        config.frequency,
+        binary_configuration = struct.pack(
+            CY_USB_I2C_CONFIG_STRUCT_LAYOUT,
+            config.frequency,
             0,  # sAddress - seems to be ignored in master mode
             1,  # isMsbFirst - Driver always sets this to 1
             1,  # isMaster - set to true for master mode
@@ -536,7 +536,8 @@ class CyI2CControllerBridge(CySerBridgeBase):
             value=(self.scb_index << CyI2c.SCB_INDEX_POS),
             index=0,
             data=binary_configuration,
-            timeout=self.timeout)
+            timeout=self.timeout,
+        )
 
     def read_i2c_configuration(self) -> CyI2CConfig:
         """
@@ -548,7 +549,8 @@ class CyI2CControllerBridge(CySerBridgeBase):
             value=(self.scb_index << CyI2c.SCB_INDEX_POS),
             index=0,
             length=CyI2c.CONFIG_LENGTH,
-            timeout=self.timeout)
+            timeout=self.timeout,
+        )
 
         config_unpacked = struct.unpack(CY_USB_I2C_CONFIG_STRUCT_LAYOUT, config_bytes)
         config = CyI2CConfig(frequency=config_unpacked[0])
@@ -557,7 +559,9 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         return config
 
-    def i2c_read(self, periph_addr: int, size: int, relinquish_bus: bool = True, io_timeout: int | None = None) -> ByteSequence:
+    def i2c_read(
+        self, periph_addr: int, size: int, relinquish_bus: bool = True, io_timeout: int | None = None
+    ) -> ByteSequence:
         """
         Perform an I2C read from the given peripheral device.
 
@@ -575,7 +579,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
         # For a reasonable timeout, assume it takes 10 bit times per byte sent,
         # and also allow 1 extra second for any USB overhead.
         if io_timeout is None:
-            io_timeout = 1000 + ceil(1000 * (1/self._curr_frequency) * 10)
+            io_timeout = 1000 + ceil(1000 * (1 / self._curr_frequency) * 10)
 
         initial_status = self._get_i2c_status(CyI2c.MODE_READ)
 
@@ -588,12 +592,14 @@ class CyI2CControllerBridge(CySerBridgeBase):
         value = (periph_addr << 8) | 0b10 | (1 if relinquish_bus else 0)
 
         # Set up transfer
-        self.dev.controlWrite(request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
-                              request=CyVendorCmds.CY_I2C_READ_CMD,
-                              value=value,
-                              index=size,
-                              data=b"",
-                              timeout=io_timeout)
+        self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_I2C_READ_CMD,
+            value=value,
+            index=size,
+            data=b"",
+            timeout=io_timeout,
+        )
 
         # Get data
         try:
@@ -631,17 +637,19 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         return read_data
 
+        def i2c_write(
+            self, periph_addr: int, data: ByteSequence, relinquish_bus: bool = True, io_timeout: int | None = None
+        ) -> int:
+            pass
 
-
-                #
-                # # Partial transfer, we should only have received some of the requested data
-                # partial_transfer_len = struct.unpack("<H", transfer_status[1:3])[0]
-                #
-                # # From my testing, partial_transfer_len seems to be 1 higher than expected, e.g.
-                # # the chip returns 1 when the address byte was NACKed
-                # partial_transfer_len -= 1
-                #
-                # if len(read_data) != partial_transfer_len:
-                #     message = "Partial read but length doesn't match?"
-                #     raise CySerialBridgeException(message)
-
+            #
+            # # Partial transfer, we should only have received some of the requested data
+            # partial_transfer_len = struct.unpack("<H", transfer_status[1:3])[0]
+            #
+            # # From my testing, partial_transfer_len seems to be 1 higher than expected, e.g.
+            # # the chip returns 1 when the address byte was NACKed
+            # partial_transfer_len -= 1
+            #
+            # if len(read_data) != partial_transfer_len:
+            #     message = "Partial read but length doesn't match?"
+            #     raise CySerialBridgeException(message)

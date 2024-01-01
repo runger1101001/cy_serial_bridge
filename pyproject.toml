@@ -148,6 +148,8 @@ ignore = [
     'RET506',  # Unnecessary `else` after `raise` statement
     'S311',    # Allow use of `random` module
     'TRY003',  # Inline exception messages - Redundant with EM101
+    'COM812',  # Missing trailing commas - incompatible with formatter
+    'ISC001',  # Single line implicit string concatenation - incompatible with formatter
 ]
 ignore-init-module-imports = true
 line-length = 120

@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 import cy_serial_bridge
 from cy_serial_bridge.utils import log
 
-VID = 0x04b4
+VID = 0x04B4
 PID = 0x0004
 
 
@@ -36,10 +36,14 @@ def main(opt):
     log.info("Connecting...")
 
     with cy_serial_bridge.driver.CyMfgrIface(ud, scb_index=opt.scb) as dev:
-        if cmd == "save": do_save(dev, *opt.args[1:])
-        if cmd == "load": do_load(dev, *opt.args[1:])
-        if cmd == "type": do_change_type(dev, *opt.args[1:])
-        if cmd == "randomize_serno": do_randomize_serno(dev)
+        if cmd == "save":
+            do_save(dev, *opt.args[1:])
+        if cmd == "load":
+            do_load(dev, *opt.args[1:])
+        if cmd == "type":
+            do_change_type(dev, *opt.args[1:])
+        if cmd == "randomize_serno":
+            do_randomize_serno(dev)
 
 
 def to_int(v):
@@ -65,9 +69,11 @@ Example:
   $ {p} type [SPI|I2C|UART] - Set the type of device that the serial bridge acts as.  Used for configurable bridge devices (65211/65215)
 """.lstrip().format(**locals())
 
+
 def usage():
     sys.stderr.write(format_usage())
     sys.exit(0)
+
 
 def do_save(dev: cy_serial_bridge.CyUSB, file):
     dev.connect()
@@ -132,7 +138,6 @@ def do_randomize_serno(dev: cy_serial_bridge.CyUSB):
 
 
 def do_change_type(dev: cy_serial_bridge.driver.CyMfgrIface, type_string: str):
-
     # Convert/validate type
     # Note: There is also a "JTAG" device class which can be set, but I'm unsure if this is actually
     # a valid setting as it doesn't appear in the config tool UI.
@@ -174,22 +179,22 @@ def do_change_type(dev: cy_serial_bridge.driver.CyMfgrIface, type_string: str):
     dev.reset_device()
 
 
-if __name__ == '__main__' and '__file__' in globals():
+if __name__ == "__main__" and "__file__" in globals():
     ap = ArgumentParser()
     ap.format_help = ap.format_usage = format_usage
-    ap.add_argument('-V', '--vid', type=to_int, default=VID)
-    ap.add_argument('-P', '--pid', type=to_int, default=PID)
-    ap.add_argument('-n', '--nth', type=int, default=0)
-    ap.add_argument('-s', '--scb', type=int, default=0)
-    ap.add_argument('-v', '--verbose', action="store_true")
-    ap.add_argument('args', nargs='*')
+    ap.add_argument("-V", "--vid", type=to_int, default=VID)
+    ap.add_argument("-P", "--pid", type=to_int, default=PID)
+    ap.add_argument("-n", "--nth", type=int, default=0)
+    ap.add_argument("-s", "--scb", type=int, default=0)
+    ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("args", nargs="*")
 
     opt = ap.parse_args()
 
     if not opt.args:
         usage()
 
-    log_level = (logging.INFO if opt.verbose else logging.WARN)
+    log_level = logging.INFO if opt.verbose else logging.WARN
     logging.basicConfig(level=log_level)
     log.setLevel(log_level)
 

@@ -47,7 +47,7 @@ class ConfigurationBlock:
             raise ValueError(message)
 
         # Some dumps contain extra bytes so trim to 512 bytes.
-        self._cfg_bytes = self._cfg_bytes[:CY_DEVICE_CONFIG_SIZE + 1]
+        self._cfg_bytes = self._cfg_bytes[: CY_DEVICE_CONFIG_SIZE + 1]
 
         # Check magic, format, and checksum
         if self._cfg_bytes[0:4] != CONFIG_BLOCK_EXPECTED_MAGIC:
@@ -76,13 +76,13 @@ class ConfigurationBlock:
         #
         # Note: There is always a 0x3 byte after the length byte before the data.  No idea what this is for.
 
-        if self._cfg_bytes[flag_addr:flag_addr + 4] == b"\xff\xff\xff\xff":
+        if self._cfg_bytes[flag_addr : flag_addr + 4] == b"\xff\xff\xff\xff":
             byte_count = self._cfg_bytes[data_start_addr] - 2
             chars_start_addr = data_start_addr + 2
             chars_end_addr = chars_start_addr + byte_count
 
             return self._cfg_bytes[chars_start_addr:chars_end_addr].decode("utf-16-le")
-        elif self._cfg_bytes[flag_addr:flag_addr + 4] == b"\x00\x00\x00\x00":
+        elif self._cfg_bytes[flag_addr : flag_addr + 4] == b"\x00\x00\x00\x00":
             return None
         else:
             message = "Unparseable data in descriptor"
@@ -97,19 +97,23 @@ class ConfigurationBlock:
         :param value: String data, or None if unset
         """
         if value is None:
-            self._cfg_bytes[flag_addr:flag_addr+4] = b"\x00\x00\x00\x00" # Set present flag to false
-            self._cfg_bytes[data_start_addr] = 2 # Set length to 0 chars (can't forget the 2 offset)
-            self._cfg_bytes[data_start_addr+2:data_start_addr+CY_CONFIG_STRING_MAX_LEN_BYTES+2] = CY_CONFIG_STRING_MAX_LEN_BYTES * b"\x00" # Zero out data
+            self._cfg_bytes[flag_addr : flag_addr + 4] = b"\x00\x00\x00\x00"  # Set present flag to false
+            self._cfg_bytes[data_start_addr] = 2  # Set length to 0 chars (can't forget the 2 offset)
+            self._cfg_bytes[data_start_addr + 2 : data_start_addr + CY_CONFIG_STRING_MAX_LEN_BYTES + 2] = (
+                CY_CONFIG_STRING_MAX_LEN_BYTES * b"\x00"
+            )  # Zero out data
         else:
             # Write data (padded with 0s)
             encoded_string = value.encode("utf-16-le")
             if len(encoded_string) > CY_CONFIG_STRING_MAX_LEN_BYTES:
                 message = "String value to long to fit in binary configuration block!"
                 raise ValueError(message)
-            self._cfg_bytes[data_start_addr+2:data_start_addr+CY_CONFIG_STRING_MAX_LEN_BYTES+2] = encoded_string + (CY_CONFIG_STRING_MAX_LEN_BYTES - len(encoded_string)) * b"\x00"
+            self._cfg_bytes[data_start_addr + 2 : data_start_addr + CY_CONFIG_STRING_MAX_LEN_BYTES + 2] = (
+                encoded_string + (CY_CONFIG_STRING_MAX_LEN_BYTES - len(encoded_string)) * b"\x00"
+            )
 
-            self._cfg_bytes[data_start_addr] = len(encoded_string) + 2 # Set length
-            self._cfg_bytes[flag_addr:flag_addr+4] = b"\xff\xff\xff\xff" # Set present flag to true
+            self._cfg_bytes[data_start_addr] = len(encoded_string) + 2  # Set length
+            self._cfg_bytes[flag_addr : flag_addr + 4] = b"\xff\xff\xff\xff"  # Set present flag to true
 
     def _calculate_checksum(self) -> int:
         """Return checksum of 512-byte config bytes"""
@@ -124,11 +128,11 @@ class ConfigurationBlock:
         """
         Type of device that this configuration describes (SPI/I2C/UART/etc)
         """
-        return CyType(self._cfg_bytes[0x1c])
+        return CyType(self._cfg_bytes[0x1C])
 
     @device_type.setter
     def device_type(self, value: CyType):
-        self._cfg_bytes[0x1c] = value.value
+        self._cfg_bytes[0x1C] = value.value
 
     @property
     def config_format_version(self) -> tuple[int, int, int]:
@@ -149,7 +153,7 @@ class ConfigurationBlock:
 
         [note that this utility currently doesn't support writing all the fields needed to make capsense work]
         """
-        return self._cfg_bytes[0x4c] == 1
+        return self._cfg_bytes[0x4C] == 1
 
     @property
     def vid(self) -> int:
@@ -180,11 +184,11 @@ class ConfigurationBlock:
 
         May be set to None, indicating that the field is unset.
         """
-        return self._decode_string_field(0xa0, 0xee)
+        return self._decode_string_field(0xA0, 0xEE)
 
     @mfgr_string.setter
     def mfgr_string(self, value: str | None):
-        self._encode_string_field(0xa0, 0xee, value)
+        self._encode_string_field(0xA0, 0xEE, value)
 
     @property
     def product_string(self) -> str | None:
@@ -193,11 +197,11 @@ class ConfigurationBlock:
 
         May be set to None, indicating that the field is unset.
         """
-        return self._decode_string_field(0xa4, 0x130)
+        return self._decode_string_field(0xA4, 0x130)
 
     @product_string.setter
     def product_string(self, value: str | None):
-        self._encode_string_field(0xa4, 0x130, value)
+        self._encode_string_field(0xA4, 0x130, value)
 
     @property
     def serial_number(self) -> str | None:
@@ -207,7 +211,7 @@ class ConfigurationBlock:
         May be set to None, indicating that the field is unset.
         The serial number, according the config utility, may only be set to alphabetic and numeric characters.
         """
-        return self._decode_string_field(0xa8, 0x172)
+        return self._decode_string_field(0xA8, 0x172)
 
     @serial_number.setter
     def serial_number(self, value: str | None):
@@ -215,7 +219,7 @@ class ConfigurationBlock:
             message = "Serial number may only be set to alphanumeric characters"
             raise ValueError(message)
 
-        self._encode_string_field(0xa8, 0x172, value)
+        self._encode_string_field(0xA8, 0x172, value)
 
     @property
     def config_bytes(self):
