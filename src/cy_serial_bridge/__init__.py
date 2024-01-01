@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 A port of Cypress USB Serial Library (libcyusbserial) in pure python.
 
