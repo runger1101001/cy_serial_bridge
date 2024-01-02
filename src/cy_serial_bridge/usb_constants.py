@@ -103,6 +103,7 @@ class CyI2c(IntEnum):
     ENABLE_PRECISE_TIMING = 1
     EVENT_NOTIFICATION_LEN = 3
     SCB_INDEX_POS = 15
+    MAX_VALID_ADDRESS = 0x7F
 
 
 # SPI related Macros

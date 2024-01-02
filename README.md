@@ -27,6 +27,19 @@ This driver is not very well tested yet, and I would advise against relying on i
 
 Additionally, I assume that it would be possible to brick your CY7C652xx by loading an incorrect configuration block onto it.  I would highly recommend doing a load operation first to download the configuration block from your specific model of chip, and then modifying it and writing it back.  Writing back configurations obtained from anywhere else could be a dangerous operation!  I take no responsibility for any chips bricked through usage of this tool.
 
+## Functionality
+### Currently Supported
+- Basic reprogramming (changing type and serial number)
+- I2C controller/master mode operation
+- User flash reading & writing
+### Not supported yet
+- UART operation
+- SPI controller/master mode operation
+- I2C peripheral/slave mode operation
+- SPI peripheral/slave mode operation
+- CapSense
+- GPIO
+
 ## OS-Specific Info
 
 ### Windows

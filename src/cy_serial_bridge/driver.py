@@ -33,11 +33,16 @@ class CySerialBridgeError(Exception):
 # Exceptions for recoverable I2C errors
 class I2CNACKError(CySerialBridgeError):
     """
-    This is thrown when an I2C operation is not acknowledged
+    This is thrown when an I2C operation is not acknowledged.
     """
 
+    # For write operations, this stores the number of bytes (not including the address byte)
+    # successfully written before the NACK was encountered.
+    # For read operations, this is not meaningful because NACKs can only happen on the address byte.
+    bytes_written: int = 0
 
-class I2CBusErrorError(CySerialBridgeError):
+
+class I2CBusError(CySerialBridgeError):
     """
     This is thrown when a bus error occurs during an I2C operation
     """
@@ -565,6 +570,8 @@ class CyI2CControllerBridge(CySerBridgeBase):
         """
         Perform an I2C read from the given peripheral device.
 
+        If the device does not acknowledge the read, an I2CNACKError will be raised.
+
         :param periph_addr: 7-bit I2C address of the peripheral to read from
         :param size: Number of bytes to read
         :param relinquish_bus: If true, give up the bus at the end.  Otherwise, a stop condition will not be generated,
@@ -575,6 +582,15 @@ class CyI2CControllerBridge(CySerBridgeBase):
         if self._curr_frequency is None:
             message = "Must call set_i2c_configuration() before reading or writing data!"
             raise CySerialBridgeError(message)
+
+        if periph_addr > CyI2c.MAX_VALID_ADDRESS:
+            message = "Invalid peripheral addr, must be a 7 bit address!"
+            raise ValueError(message)
+
+        if size < 1:
+            # I tested this and the bridge device does not handle 0-size reads
+            message = "Read size must be >= 1"
+            raise ValueError(message)
 
         # For a reasonable timeout, assume it takes 10 bit times per byte sent,
         # and also allow 1 extra second for any USB overhead.
@@ -589,7 +605,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         # Bits 0 and 1 of the value control stop bit generation and NAK generation at the end of the read.
         # We always want to NAK the slave at the end of the read as it's required by the standard...
-        value = (periph_addr << 8) | 0b10 | (1 if relinquish_bus else 0)
+        value = (self.scb_index << 15) | (periph_addr << 8) | 0b10 | (1 if relinquish_bus else 0)
 
         # Set up transfer
         self.dev.controlWrite(
@@ -603,7 +619,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         # Get data
         try:
-            read_data = self.dev.bulkRead(self.ep_in, size, timeout=self.timeout)
+            read_data = self.dev.bulkRead(self.ep_in, size, timeout=io_timeout)
             post_transfer_status = self.dev.interruptRead(self.ep_intr, CyI2c.EVENT_NOTIFICATION_LEN, io_timeout)
 
         except usb1.USBErrorPipe as ex:
@@ -622,34 +638,110 @@ class CyI2CControllerBridge(CySerBridgeBase):
                 raise CySerialBridgeError(message) from ex
 
         if post_transfer_status[0] & CyI2c.ERROR_BIT:
+            # First reset the read logic
             self._i2c_reset(CyI2c.MODE_READ)
 
             # Finally, handle the error
             if post_transfer_status[0] & CyI2c.ARBITRATION_ERROR_BIT:
                 raise I2CArbLostError
             elif post_transfer_status[0] & CyI2c.NAK_ERROR_BIT:
-                raise I2CNACKError
+                error = I2CNACKError()
+                error.bytes_written = 0
+                raise error
             elif post_transfer_status[0] & CyI2c.BUS_ERROR_BIT:
-                raise I2CBusErrorError
+                raise I2CBusError
             else:
                 message = "I2C operation failed with status " + repr(post_transfer_status)
                 raise CySerialBridgeError(message)
 
         return read_data
 
-        def i2c_write(
-            self, periph_addr: int, data: ByteSequence, relinquish_bus: bool = True, io_timeout: int | None = None
-        ) -> int:
-            pass
+    def i2c_write(
+        self, periph_addr: int, data: ByteSequence, relinquish_bus: bool = True, io_timeout: int | None = None
+    ):
+        """
+        Perform an I2C write to the given peripheral device.
 
-            #
-            # # Partial transfer, we should only have received some of the requested data
-            # partial_transfer_len = struct.unpack("<H", transfer_status[1:3])[0]
-            #
-            # # From my testing, partial_transfer_len seems to be 1 higher than expected, e.g.
-            # # the chip returns 1 when the address byte was NACKed
-            # partial_transfer_len -= 1
-            #
-            # if len(read_data) != partial_transfer_len:
-            #     message = "Partial read but length doesn't match?"
-            #     raise CySerialBridgeException(message)
+        If the device does not acknowledge the write, an I2CNACKError will be raised.  The
+        bytes_written field of the exception can be used to determine where in the write the
+        NACK happened.
+
+        NOTE: Due to what seems to be a bridge chip issue, a NACK error will not be raised for failed writes of
+        only one byte.  Need to look into this more...
+
+        :param periph_addr: 7-bit I2C address of the peripheral to read from
+        :param data: Data to write
+        :param relinquish_bus: If true, give up the bus at the end.  Otherwise, a stop condition will not be generated,
+            so a repeated start will be performed on the next transfer.
+        :param io_timeout: Timeout for the transfer in ms.  Leave empty to compute a reasonable timeout automatically.
+            Set to 0 to wait forever.
+        """
+        if self._curr_frequency is None:
+            message = "Must call set_i2c_configuration() before reading or writing data!"
+            raise CySerialBridgeError(message)
+
+        if periph_addr > CyI2c.MAX_VALID_ADDRESS:
+            message = "Invalid peripheral addr, must be a 7 bit address!"
+            raise ValueError(message)
+
+        # For a reasonable timeout, assume it takes 10 bit times per byte sent,
+        # and also allow 1 extra second for any USB overhead.
+        if io_timeout is None:
+            io_timeout = 1000 + ceil(1000 * (1 / self._curr_frequency) * 10)
+
+        initial_status = self._get_i2c_status(CyI2c.MODE_WRITE)
+
+        if initial_status[0] & CyI2c.ERROR_BIT:
+            message = "Device is busy but tried to start another write!"
+            raise CySerialBridgeError(message)
+
+        # Bit 0 of the value controls stop bit generation
+        value = (self.scb_index << 15) | (periph_addr << 8) | (1 if relinquish_bus else 0)
+
+        # Set up transfer
+        self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_I2C_WRITE_CMD,
+            value=value,
+            index=len(data),
+            data=b"",
+            timeout=io_timeout,
+        )
+
+        # Get data
+        try:
+            self.dev.bulkWrite(self.ep_out, data, timeout=io_timeout)
+            post_transfer_status = self.dev.interruptRead(self.ep_intr, CyI2c.EVENT_NOTIFICATION_LEN, io_timeout)
+        except usb1.USBErrorPipe as ex:
+            # Attempt to handle pipe errors similarly to how the original driver did.
+            # Basically, we reset the hardware and re-query the status.
+
+            # Try and reset the endpoint
+            self.dev.clearHalt(self.ep_out)
+
+            # Recheck the status
+            post_transfer_status = self._get_i2c_status(CyI2c.MODE_WRITE)
+
+            # The status should indicate some sort of error
+            if not post_transfer_status[0] & CyI2c.ERROR_BIT:
+                message = "Operation failed with pipe error, but did not detect an I2C comms error?"
+                raise CySerialBridgeError(message) from ex
+
+        if post_transfer_status[0] & CyI2c.ERROR_BIT:
+            partial_transfer_len = struct.unpack("<H", post_transfer_status[1:3])[0]
+
+            # First reset the write logic
+            self._i2c_reset(CyI2c.MODE_WRITE)
+
+            # Finally, handle the error
+            if post_transfer_status[0] & CyI2c.ARBITRATION_ERROR_BIT:
+                raise I2CArbLostError
+            elif post_transfer_status[0] & CyI2c.NAK_ERROR_BIT:
+                error = I2CNACKError()
+                error.bytes_written = partial_transfer_len
+                raise error
+            elif post_transfer_status[0] & CyI2c.BUS_ERROR_BIT:
+                raise I2CBusError
+            else:
+                message = "I2C operation failed with status " + repr(post_transfer_status)
+                raise CySerialBridgeError(message)

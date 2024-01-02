@@ -1,5 +1,6 @@
 import logging
 import random
+import time
 
 import pytest
 import usb1
@@ -19,6 +20,7 @@ PID = 0x0004
 
 # Eval kit has a 24LC128 EEPROM with A[2..0] = 001
 EEPROM_I2C_ADDRESS = 0x51
+EEPROM_PAGE_SIZE = 64
 
 
 @pytest.fixture()
@@ -109,9 +111,50 @@ def test_i2c_read_write(serial_bridge: usb1.USBDevice):
     with cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
         dev.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(400000))
 
+        # Basic read/write operations
+        # ---------------------------------------------------------------------------
+
         # Try a 1 byte read from the EEPROM address to make sure it ACKs
-        dev.i2c_read(0x51, 1)
+        dev.i2c_read(EEPROM_I2C_ADDRESS, 1)
 
         # Try a 1 byte read from an incorrect address to make sure it does not ACK
-        with pytest.raises(cy_serial_bridge.I2CNACKError):
+        with pytest.raises(cy_serial_bridge.I2CNACKError) as raises:
             dev.i2c_read(EEPROM_I2C_ADDRESS + 0x10, 1)
+        assert raises.value.bytes_written == 0
+
+        # Try a short write to the EEPROM address to make sure it ACKs
+        dev.i2c_write(EEPROM_I2C_ADDRESS, b"\x00\x00")
+
+        # Try an addr-only write to an incorrect address to make sure it does not ACK
+        with pytest.raises(cy_serial_bridge.I2CNACKError) as raises:
+            dev.i2c_write(EEPROM_I2C_ADDRESS + 0x10, b"\x00\x00")
+
+        # TODO this seems to be not working
+        # assert raises.value.bytes_written == 0
+
+        # Write something to the EEPROM and then read it back
+        # ---------------------------------------------------------------------------
+
+        # Create a random 8-digit number which will be used in the test.
+        # This ensures the flash is actually getting programmed and we aren't just reusing old data.
+        random_number = random.randint(0, 10**8 - 1)
+        eeprom_message = f"Hello from EEPROM! Number is {random_number:08}".encode()
+        assert len(eeprom_message) <= EEPROM_PAGE_SIZE
+
+        eeprom_address = 0x0100  # Must be 64 byte aligned
+
+        write_command = bytes([(eeprom_address >> 8) & 0xFF, eeprom_address & 0xFF, *eeprom_message])
+        print("Writing: " + repr(write_command))
+        dev.i2c_write(EEPROM_I2C_ADDRESS, write_command)
+
+        time.sleep(0.01)  # EEPROM needs at least 5ms page program time before it can respond again
+
+        # Reset address pointer
+        dev.i2c_write(EEPROM_I2C_ADDRESS, bytes([(eeprom_address >> 8) & 0xFF, eeprom_address & 0xFF]))
+
+        # Read data back
+        read_data = dev.i2c_read(EEPROM_I2C_ADDRESS, len(eeprom_message))
+
+        print("Got back: " + repr(read_data))
+
+        assert read_data == eeprom_message

@@ -33,6 +33,7 @@ jobs:
         poetry run pip install --upgrade pip setuptools
         poetry install --only linters
 
-    - name: Lint with Ruff
+    - name: Lint and Format with Ruff
       run: |
         poetry run ruff check --fix .
+        poetry run ruff format --diff .
