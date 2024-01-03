@@ -1,7 +1,6 @@
 import logging
 import pathlib
 import random
-import time
 
 import pytest
 import usb1
@@ -40,12 +39,14 @@ def test_cfg_block_generation():
     """
     Test that we can get and set each property of a configuration block
     """
-    config_block = cy_serial_bridge.ConfigurationBlock(PROJECT_ROOT_DIR / "example_config_blocks" / "mbed_ce_cy7c65211_spi.bin")
+    config_block = cy_serial_bridge.ConfigurationBlock(
+        PROJECT_ROOT_DIR / "example_config_blocks" / "mbed_ce_cy7c65211_spi.bin"
+    )
 
     # Regression test: make sure that all the attributes of a known config block decode as expected
     assert config_block.config_format_version == (1, 0, 3)
     assert config_block.device_type == cy_serial_bridge.CyType.SPI
-    assert config_block.vid == 0x04b4
+    assert config_block.vid == 0x04B4
     assert config_block.pid == 0x0004
     assert config_block.mfgr_string == "Cypress Semiconductor"
     assert config_block.product_string == "Mbed CE CY7C65211"
@@ -83,7 +84,6 @@ def test_user_flash(serial_bridge: usb1.USBDevice):
     """
     Test ability to use the user flash programming functionality of the device
     """
-
     # Enable more detailed logs during the tests
     logging.basicConfig(level=logging.INFO)
     cy_serial_bridge.utils.log.setLevel(logging.INFO)
@@ -133,6 +133,11 @@ def test_user_flash(serial_bridge: usb1.USBDevice):
 #     """
 #     Test that we can get and set the I2C controller mode config for the USB device
 #     """
+#
+#     print("Please connect jumpers on the eval kit:")
+#     print("J17 = 2-3")
+#     print("J20 = 2-3")
+#     input("Press [ENTER] when done...")
 #
 #     with cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
 #         print("Setting speed to 400kHz...")
@@ -212,16 +217,22 @@ def test_spi_config_read_write(serial_bridge: usb1.USBDevice):
     """
     Test that we can read and write SPI configs from the device
     """
+    print("Please connect jumpers on the eval kit:")
+    print("J17 = 2-5")
+    print("J19 = 2-3")
+    print("J21 = 2-3")
+    print("J20 = 2-5")
+    input("Press [ENTER] when done...")
 
     with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
-
         config_1 = cy_serial_bridge.CySPIConfig(
-                    frequency=20000,
-                    word_size=16,
-                    mode=cy_serial_bridge.CySpiMode.NATIONAL_MICROWIRE,
-                    msbit_first=False,
-                    continuous_ssel=False,
-                    ti_select_precede=True)
+            frequency=20000,
+            word_size=16,
+            mode=cy_serial_bridge.CySpiMode.NATIONAL_MICROWIRE,
+            msbit_first=False,
+            continuous_ssel=False,
+            ti_select_precede=True,
+        )
         print("Setting SPI configuration: " + repr(config_1))
         dev.set_spi_configuration(config_1)
 
@@ -235,7 +246,8 @@ def test_spi_config_read_write(serial_bridge: usb1.USBDevice):
             mode=cy_serial_bridge.CySpiMode.MOTOROLA_MODE_1,
             msbit_first=True,
             continuous_ssel=True,
-            ti_select_precede=False)
+            ti_select_precede=False,
+        )
         print("Setting SPI configuration: " + repr(config_2))
         dev.set_spi_configuration(config_2)
 

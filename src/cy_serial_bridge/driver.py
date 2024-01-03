@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass
+from enum import Enum
 from math import ceil
 from typing import TYPE_CHECKING, Iterator, Tuple, cast
-from enum import Enum
 
 import usb1  # from 'libusb1' package
 
@@ -195,7 +196,10 @@ class CySerBridgeBase:
 
             # Get and print the firmware version
             firmware_version = self.get_firmware_version()
-            print("Connected to %s interface of CY7C652xx device, firmware version %d.%d.%d build %d" % (self.cy_type.name, *firmware_version))
+            print(
+                "Connected to %s interface of CY7C652xx device, firmware version %d.%d.%d build %d"
+                % (self.cy_type.name, *firmware_version)
+            )
 
         except usb1.USBErrorNotSupported as ex:
             if sys.platform == "win32":
@@ -597,7 +601,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
         # For a reasonable timeout, assume it takes 10 bit times per byte sent,
         # and also allow 1 extra second for any USB overhead.
         if io_timeout is None:
-            io_timeout = 1000 + ceil(1000 * (1 / self._curr_frequency) * 10)
+            io_timeout = 1000 + ceil(1000 * size * (1 / self._curr_frequency) * 10)
 
         initial_status = self._get_i2c_status(CyI2c.MODE_READ)
 
@@ -638,6 +642,8 @@ class CyI2CControllerBridge(CySerBridgeBase):
             if not post_transfer_status[0] & CyI2c.ERROR_BIT:
                 message = "Operation failed with pipe error, but did not detect an I2C comms error?"
                 raise CySerialBridgeError(message) from ex
+
+            raise
 
         if post_transfer_status[0] & CyI2c.ERROR_BIT:
             # First reset the read logic
@@ -689,7 +695,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
         # For a reasonable timeout, assume it takes 10 bit times per byte sent,
         # and also allow 1 extra second for any USB overhead.
         if io_timeout is None:
-            io_timeout = 1000 + ceil(1000 * (1 / self._curr_frequency) * 10)
+            io_timeout = 1000 + ceil(1000 * len(data) * (1 / self._curr_frequency) * 10)
 
         initial_status = self._get_i2c_status(CyI2c.MODE_WRITE)
 
@@ -710,7 +716,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
             timeout=io_timeout,
         )
 
-        # Get data
+        # Send data
         try:
             self.dev.bulkWrite(self.ep_out, data, timeout=io_timeout)
             post_transfer_status = self.dev.interruptRead(self.ep_intr, CyI2c.EVENT_NOTIFICATION_LEN, io_timeout)
@@ -782,6 +788,7 @@ class CySpiMode(Enum):
     # CPHA = 0
     NATIONAL_MICROWIRE = (2, 0, 0)
 
+
 @dataclass
 class CySPIConfig:
     # SCLK frequency in Hz.  Must be between 1kHz and 3MHz, inclusive.
@@ -806,6 +813,7 @@ class CySPIConfig:
     # false - The start pulse is in sync with first data.
     ti_select_precede: bool = True
 
+
 class CySPIControllerBridge(CySerBridgeBase):
     """
     Driver which uses a Cypress serial bridge in SPI controller (master) mode.
@@ -823,6 +831,50 @@ class CySPIControllerBridge(CySerBridgeBase):
 
         self._curr_frequency: int | None = None
 
+    def __enter__(self):
+        super().__enter__()
+
+        # Just in case the SPI module is in a bad state, reset it
+        self._spi_reset()
+
+        return self
+
+    def _compute_timeout(self, transaction_size_bytes: int) -> int:
+        """
+        Compute a reasonable timeout for an SPI transaction.
+        """
+        # Assume 9 bit times per byte plus 1 second wiggle room
+        return 1000 + ceil(1000 * transaction_size_bytes * (1 / self._curr_frequency) * 9)
+
+    def _spi_reset(self) -> bytes:
+        """
+        This API resets the SPI module whenever there is an error in a data transaction.
+        """
+        return self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_SPI_RESET_CMD,
+            value=self.scb_index << CY_SCB_INDEX_POS,
+            index=0,
+            data=b"",
+            timeout=self.timeout,
+        )
+
+    def _spi_is_write_done(self) -> bool:
+        """
+        Poll the SPI status indicator to determine if a write is done
+        """
+        return (
+            self.dev.controlRead(
+                request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
+                request=CyVendorCmds.CY_SPI_GET_STATUS_CMD,
+                value=self.scb_index << CY_SCB_INDEX_POS,
+                index=0,
+                data=b"",
+                timeout=self.timeout,
+            )
+            == b"\x00\x00\x00\x00"
+        )
+
     def set_spi_configuration(self, config: CySPIConfig):
         """
         This API configures the SPI module of USB Serial device.
@@ -832,7 +884,6 @@ class CySPIControllerBridge(CySerBridgeBase):
 
         Note: Using this API during an active transaction of SPI may result in data loss.
         """
-
         # Check structure
         if config.frequency < CySpi.MIN_FREQUENCY or config.frequency > CySpi.MAX_MASTER_FREQUENCY:
             message = "Frequency out of valid range"
@@ -845,7 +896,7 @@ class CySPIControllerBridge(CySerBridgeBase):
 
         binary_configuration = struct.pack(
             CY_USB_SPI_CONFIG_STRUCT_LAYOUT,
-            config.frequency, # frequency
+            config.frequency,  # frequency
             config.word_size,  # dataWidth
             config.mode.value[0],  # mode
             0,  # xferMode (seems unused in Cypress driver)
@@ -901,9 +952,60 @@ class CySPIControllerBridge(CySerBridgeBase):
             mode=spi_mode,
             msbit_first=config_unpacked[4] != 0,
             continuous_ssel=config_unpacked[6] != 0,
-            ti_select_precede=config_unpacked[7] != 0
+            ti_select_precede=config_unpacked[7] != 0,
         )
 
         self._curr_frequency = config.frequency
 
         return config
+
+    def spi_write(self, tx_data: ByteSequence, io_timeout: int | None = None):
+        """
+        Perform an SPI write-only operation to the peripheral device.  Read data is discarded.
+
+        :param tx_data: Data to write
+        :param io_timeout: Timeout for the transfer in ms.  Leave empty to compute a reasonable timeout automatically.
+            Set to 0 to wait forever.
+        """
+        if self._curr_frequency is None:
+            message = "Must call set_spi_configuration() before reading or writing data!"
+            raise CySerialBridgeError(message)
+
+        if io_timeout is None:
+            io_timeout = self._compute_timeout(len(tx_data))
+
+        # Set up transfer
+        self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_SPI_READ_WRITE_CMD,
+            value=CySpi.WRITE_BIT,
+            index=len(tx_data),
+            data=b"",
+            timeout=io_timeout,
+        )
+
+        # Send data
+        try:
+            write_start_time = time.time()
+            self.dev.bulkWrite(self.ep_out, tx_data, timeout=io_timeout)
+
+            # Poll for completion.  Oddly, unlike I2C, there is no interrupt functionality to tell when
+            # the transfer is complete.
+            while not self._spi_is_write_done():
+                time.sleep(0.001)
+
+                if time.time() > write_start_time:
+                    message = "Timeout waiting for SPI write completion!"
+                    raise CySerialBridgeError(message)
+
+        except usb1.USBErrorPipe:
+            # Attempt to handle pipe errors similarly to how the original driver did.
+            # Basically, we reset the hardware and reset SPI
+
+            self._spi_reset()
+            self.dev.clearHalt(self.ep_out)
+            raise
+
+        except usb1.USBErrorTimeout:
+            self._spi_reset()
+            raise

@@ -11,6 +11,15 @@ import usb1  # from "libusb1" package
 
 from cy_serial_bridge import configuration_block, driver
 from cy_serial_bridge.configuration_block import ConfigurationBlock
-from cy_serial_bridge.driver import CySerialBridgeError, I2CArbLostError, I2CBusError, I2CNACKError, CySPIConfig, CySpiMode, CyI2CControllerBridge, CySPIControllerBridge
+from cy_serial_bridge.driver import (
+    CyI2CControllerBridge,
+    CySerialBridgeError,
+    CySPIConfig,
+    CySPIControllerBridge,
+    CySpiMode,
+    I2CArbLostError,
+    I2CBusError,
+    I2CNACKError,
+)
 from cy_serial_bridge.usb_constants import *
 from cy_serial_bridge.utils import ByteSequence
