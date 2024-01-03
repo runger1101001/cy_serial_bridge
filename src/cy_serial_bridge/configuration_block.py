@@ -5,10 +5,10 @@ import re
 import struct
 from typing import TYPE_CHECKING
 
-from src.cy_serial_bridge.usb_constants import CY_CONFIG_STRING_MAX_LEN_BYTES, CY_DEVICE_CONFIG_SIZE, CyType
+from cy_serial_bridge.usb_constants import CY_CONFIG_STRING_MAX_LEN_BYTES, CY_DEVICE_CONFIG_SIZE, CyType
 
 if TYPE_CHECKING:
-    from src.cy_serial_bridge.utils import ByteSequence
+    from cy_serial_bridge.utils import ByteSequence
 
 CONFIG_BLOCK_EXPECTED_MAGIC = b"CYUS"
 CONFIG_BLOCK_EXPECTED_MAJOR_VERSION = 1

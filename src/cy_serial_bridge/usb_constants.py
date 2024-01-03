@@ -18,7 +18,7 @@ CY_VENDOR_REQUEST_DEVICE_TO_HOST = CY_VENDOR_REQUEST | EP_IN
 CY_VENDOR_REQUEST_HOST_TO_DEVICE = CY_VENDOR_REQUEST | EP_OUT
 CY_CLASS_INTERFACE_REQUEST = 0x21
 
-# used to set which SCB to configure
+# used in 'value' to set which SCB to configure
 CY_SCB_INDEX_POS = 15
 
 # Flash constants.  From the comments in CyProgUserFlash
@@ -102,7 +102,6 @@ class CyI2c(IntEnum):
     BUS_BUSY_ERROR = 1 << 5
     ENABLE_PRECISE_TIMING = 1
     EVENT_NOTIFICATION_LEN = 3
-    SCB_INDEX_POS = 15
     MAX_VALID_ADDRESS = 0x7F
 
 
@@ -116,6 +115,10 @@ class CySpi(IntEnum):
     GET_STATUS_LEN = 4
     UNDERFLOW_ERROR = 1
     BUS_ERROR = 1 << 1
+    MIN_FREQUENCY = 1000
+    MAX_MASTER_FREQUENCY = 3000000
+    MIN_WORD_SIZE = 4
+    MAX_WORD_SIZE = 16
 
 
 # Vendor UART related macros
@@ -185,3 +188,23 @@ CY_PHDC_SET_FEATURE_WVALUE = 0x0101
 # } CyUsI2cConfig_t;
 CY_USB_I2C_CONFIG_STRUCT_LAYOUT = "<I6B6x"
 assert struct.calcsize(CY_USB_I2C_CONFIG_STRUCT_LAYOUT) == CyI2c.CONFIG_LENGTH
+
+# C structure layout:
+# typedef struct
+# {
+#     UINT32 frequency;
+#     UINT8 dataWidth;
+#     UCHAR mode;
+#     UCHAR xferMode;
+#     bool isMsbFirst;
+#     bool isMaster;
+#     bool isContinuous;
+#     bool isSelectPrecede;
+#     bool cpha;
+#     bool cpol;
+#     bool isLoopback;
+#     UCHAR reserver[2];
+# } CyUsSpiConfig_t;
+# #pragma pack()
+CY_USB_SPI_CONFIG_STRUCT_LAYOUT = "<I10B2x"
+assert struct.calcsize(CY_USB_SPI_CONFIG_STRUCT_LAYOUT) == CySpi.CONFIG_LEN

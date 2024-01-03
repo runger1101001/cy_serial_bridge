@@ -20,7 +20,7 @@ def main(opt):
         print(str(cfg_block))
         return
 
-    found = list(cy_serial_bridge.find_device(opt.vid, opt.pid))
+    found = list(cy_serial_bridge.driver.find_device(opt.vid, opt.pid))
 
     if len(found) - 1 < opt.nth:
         message = "No USB device found"
@@ -75,7 +75,7 @@ def usage():
     sys.exit(0)
 
 
-def do_save(dev: cy_serial_bridge.CyUSB, file):
+def do_save(dev: cy_serial_bridge.driver.CyMfgrIface, file):
     dev.connect()
     buf = dev.read_config()
     dev.disconnect()
@@ -88,7 +88,7 @@ def do_save(dev: cy_serial_bridge.CyUSB, file):
     pathlib.Path(file).write_bytes(bytes(buf))
 
 
-def do_load(dev: cy_serial_bridge.CyUSB, file):
+def do_load(dev: cy_serial_bridge.driver.CyMfgrIface, file):
     # Load bytes and check checksum
     config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(file)
 
@@ -105,7 +105,7 @@ def do_load(dev: cy_serial_bridge.CyUSB, file):
     return ret
 
 
-def do_randomize_serno(dev: cy_serial_bridge.CyUSB):
+def do_randomize_serno(dev: cy_serial_bridge.driver.CyMfgrIface):
     dev.connect()
 
     try:

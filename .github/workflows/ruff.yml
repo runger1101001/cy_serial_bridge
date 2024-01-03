@@ -33,7 +33,10 @@ jobs:
         poetry run pip install --upgrade pip setuptools
         poetry install --only linters
 
+    # Note: We format the entire repo, but only run the linter on the application code, not the tests.
+    # This lets the tests be a bit looser with e.g. magic numbers
     - name: Lint and Format with Ruff
       run: |
-        poetry run ruff check --fix .
         poetry run ruff format --diff .
+        cd src
+        poetry run ruff check --fix .

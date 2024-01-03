@@ -4,6 +4,7 @@ import sys
 from dataclasses import dataclass
 from math import ceil
 from typing import TYPE_CHECKING, Iterator, Tuple, cast
+from enum import Enum
 
 import usb1  # from 'libusb1' package
 
@@ -112,6 +113,7 @@ class CySerBridgeBase:
             message = "scb_index cannot be higher than 1!"
             raise ValueError(message)
 
+        self.cy_type = cy_type
         self.scb_index = scb_index
         found = list(find_type(ud, cy_type))
         if not found:
@@ -193,7 +195,7 @@ class CySerBridgeBase:
 
             # Get and print the firmware version
             firmware_version = self.get_firmware_version()
-            print("Connected to CY7C652xx device, firmware version %d.%d.%d build %d" % firmware_version)
+            print("Connected to %s interface of CY7C652xx device, firmware version %d.%d.%d build %d" % (self.cy_type.name, *firmware_version))
 
         except usb1.USBErrorNotSupported as ex:
             if sys.platform == "win32":
@@ -450,11 +452,11 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
     def __init__(self, ud: usb1.USBDevice, scb_index=0, timeout=1000):
         """
-        Create a CySerBridgeBase.
+        Create a CyI2CControllerBridge.
 
         :param ud: USB device to open
         :param scb_index: Index of the SCB to open, for multi-port devices
-        :param timeout: Timeout to use for USB operations in milliseconds
+        :param timeout: Timeout to use for general USB operations in milliseconds
         """
         super().__init__(ud, CyType.I2C, scb_index, timeout)
 
@@ -490,7 +492,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
         return self.dev.controlRead(
             request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
             request=CyVendorCmds.CY_I2C_GET_STATUS_CMD,
-            value=(self.scb_index << CyI2c.SCB_INDEX_POS) | mode,
+            value=(self.scb_index << CY_SCB_INDEX_POS) | mode,
             index=0,
             length=CyI2c.GET_STATUS_LEN,
             timeout=self.timeout,
@@ -505,7 +507,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
         return self.dev.controlWrite(
             request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
             request=CyVendorCmds.CY_I2C_RESET_CMD,
-            value=(self.scb_index << CyI2c.SCB_INDEX_POS) | mode,
+            value=(self.scb_index << CY_SCB_INDEX_POS) | mode,
             index=0,
             data=b"",
             timeout=self.timeout,
@@ -538,7 +540,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
         self.dev.controlWrite(
             request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
             request=CyVendorCmds.CY_I2C_SET_CONFIG_CMD,
-            value=(self.scb_index << CyI2c.SCB_INDEX_POS),
+            value=(self.scb_index << CY_SCB_INDEX_POS),
             index=0,
             data=binary_configuration,
             timeout=self.timeout,
@@ -551,7 +553,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
         config_bytes = self.dev.controlRead(
             request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
             request=CyVendorCmds.CY_I2C_GET_CONFIG_CMD,
-            value=(self.scb_index << CyI2c.SCB_INDEX_POS),
+            value=(self.scb_index << CY_SCB_INDEX_POS),
             index=0,
             length=CyI2c.CONFIG_LENGTH,
             timeout=self.timeout,
@@ -745,3 +747,163 @@ class CyI2CControllerBridge(CySerBridgeBase):
             else:
                 message = "I2C operation failed with status " + repr(post_transfer_status)
                 raise CySerialBridgeError(message)
+
+
+class CySpiMode(Enum):
+    """
+    Enumeration defining SPI protocol types supported by USB Serial SPI module.
+
+    Values have the form (protocol enum value, CPHA value, CPOL value).
+    Note that for "regular" SPI, you probably want one of the MOTOROLA modes.
+    """
+
+    # In master mode, when not transmitting data (SELECT is inactive), SCLK is stable at CPOL.
+    # In slave mode, when not selected, SCLK is ignored; i.e. it can be either stable or clocking.
+    # In master mode, when there is no data to transmit (TX FIFO is empty), SELECT is inactive.
+    MOTOROLA_MODE_0 = (0, 0, 0)
+    MOTOROLA_MODE_1 = (0, 0, 1)
+    MOTOROLA_MODE_2 = (0, 1, 0)
+    MOTOROLA_MODE_3 = (0, 1, 1)
+
+    # In master mode, when not transmitting data, SCLK is stable at '0'.
+    # In slave mode, when not selected, SCLK is ignored - i.e. it can be either stable or clocking.
+    # In master mode, when there is no data to transmit (TX FIFO is empty), SELECT is inactive -
+    # i.e. no pulse is generated.
+    # *** It supports only mode 1 whose polarity values are
+    # CPOL = 0
+    # CPHA = 1
+    TI = (1, 0, 1)
+
+    # In master mode, when not transmitting data, SCLK is stable at '0'. In slave mode,
+    # when not selected, SCLK is ignored; i.e. it can be either stable or clocking.
+    # In master mode, when there is no data to transmit (TX FIFO is empty), SELECT is inactive.
+    # *** It supports only mode 0 whose polarity values are
+    # CPOL = 0
+    # CPHA = 0
+    NATIONAL_MICROWIRE = (2, 0, 0)
+
+@dataclass
+class CySPIConfig:
+    # SCLK frequency in Hz.  Must be between 1kHz and 3MHz, inclusive.
+    frequency: int = 1000000
+
+    # Size of one data word in bits.  Must be between 4 and 16, inclusive.
+    word_size: int = 8
+
+    # SPI mode to use
+    mode: CySpiMode = CySpiMode.MOTOROLA_MODE_0
+
+    # If true, the MSBit of each word is sent first on the wire (standard)
+    # If false, the LSBit is sent first
+    msbit_first: bool = True
+
+    # If true, the SSEL line is kept activated for the entire transaction.
+    # If false, the chip is deselected after each word.
+    continuous_ssel: bool = True
+
+    # Used in TI mode only.
+    # true - The start pulse precedes the first data
+    # false - The start pulse is in sync with first data.
+    ti_select_precede: bool = True
+
+class CySPIControllerBridge(CySerBridgeBase):
+    """
+    Driver which uses a Cypress serial bridge in SPI controller (master) mode.
+    """
+
+    def __init__(self, ud: usb1.USBDevice, scb_index=0, timeout=1000):
+        """
+        Create a CySPIControllerBridge.
+
+        :param ud: USB device to open
+        :param scb_index: Index of the SCB to open, for multi-port devices
+        :param timeout: Timeout to use for general USB operations in milliseconds
+        """
+        super().__init__(ud, CyType.SPI, scb_index, timeout)
+
+        self._curr_frequency: int | None = None
+
+    def set_spi_configuration(self, config: CySPIConfig):
+        """
+        This API configures the SPI module of USB Serial device.
+
+        You should always call this function after first opening the device because the configuration rewriting part of
+        the module does not know how to set the default SPI settings in config and they may be garbage.
+
+        Note: Using this API during an active transaction of SPI may result in data loss.
+        """
+
+        # Check structure
+        if config.frequency < CySpi.MIN_FREQUENCY or config.frequency > CySpi.MAX_MASTER_FREQUENCY:
+            message = "Frequency out of valid range"
+            raise ValueError(message)
+        elif config.word_size < CySpi.MIN_WORD_SIZE or config.word_size > CySpi.MAX_WORD_SIZE:
+            message = "Word size out of valid range"
+            raise ValueError(message)
+
+        self._curr_frequency = config.frequency
+
+        binary_configuration = struct.pack(
+            CY_USB_SPI_CONFIG_STRUCT_LAYOUT,
+            config.frequency, # frequency
+            config.word_size,  # dataWidth
+            config.mode.value[0],  # mode
+            0,  # xferMode (seems unused in Cypress driver)
+            config.msbit_first,  # isMsbFirst
+            1,  # isMaster (always set to 1 here)
+            config.continuous_ssel,  # isContinuous
+            config.ti_select_precede,  # isSelectPrecede
+            config.mode.value[1],  # cpha
+            config.mode.value[2],  # cpol
+            0,  # isLoopback (seems unused in Cypress driver)
+        )
+
+        self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_SPI_SET_CONFIG_CMD,
+            value=(self.scb_index << CY_SCB_INDEX_POS),
+            index=0,
+            data=binary_configuration,
+            timeout=self.timeout,
+        )
+
+    def read_spi_configuration(self) -> CyI2CConfig:
+        """
+        Read the current SPI master mode configuration from the device.
+        """
+        config_bytes = self.dev.controlRead(
+            request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
+            request=CyVendorCmds.CY_SPI_GET_CONFIG_CMD,
+            value=(self.scb_index << CY_SCB_INDEX_POS),
+            index=0,
+            length=CySpi.CONFIG_LEN,
+            timeout=self.timeout,
+        )
+
+        config_unpacked = struct.unpack(CY_USB_SPI_CONFIG_STRUCT_LAYOUT, config_bytes)
+
+        # Find the correct mode enum value based on the settings
+        standard = config_unpacked[2]
+        cpha = config_unpacked[8]
+        cpol = config_unpacked[9]
+        spi_mode: CySpiMode | None = None
+        for mode_value in CySpiMode:
+            if mode_value.value == (standard, cpha, cpol):
+                spi_mode = mode_value
+
+        if spi_mode is None:
+            message = "Invalid SPI mode data read from hardware, can't convert to enum"
+            raise CySerialBridgeError(message)
+
+        config = CySPIConfig(
+            frequency=config_unpacked[0],
+            word_size=config_unpacked[1],
+            mode=spi_mode,
+            msbit_first=config_unpacked[4] != 0,
+            continuous_ssel=config_unpacked[6] != 0,
+            ti_select_precede=config_unpacked[7] != 0
+        )
+
+        self._curr_frequency = config.frequency
+
+        return config
