@@ -16,10 +16,6 @@ changes are required, so you will be prompted to make changes
 
 PROJECT_ROOT_DIR = pathlib.Path(__file__).parent.parent
 
-# VID and PID of the device to search for
-VID = 0x04B4
-PID = 0x0004
-
 # Eval kit has a 24LC128 EEPROM with A[2..0] = 001
 EEPROM_I2C_ADDRESS = 0x51
 EEPROM_PAGE_SIZE = 64
@@ -30,7 +26,7 @@ def serial_bridge() -> usb1.USBDevice:
     """
     Fixture which finds a serial bridge USB device
     """
-    found = list(cy_serial_bridge.driver.find_device(VID, PID))
+    found = list(cy_serial_bridge.driver.find_device())
     assert len(found) >= 1
     return found[0]
 

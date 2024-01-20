@@ -1,19 +1,16 @@
 import logging
 import pathlib
 import random
-import sys
 from argparse import ArgumentParser
+
 import usb1
 
 import cy_serial_bridge
+from cy_serial_bridge.usb_constants import DEFAULT_PID, DEFAULT_VID
 from cy_serial_bridge.utils import log
-
-VID = 0x04B4
-PID = 0x0004
 
 
 def find_device(args) -> usb1.USBDevice:
-
     found = list(cy_serial_bridge.driver.find_device(args.vid, args.pid))
 
     if len(found) - 1 < args.nth:
@@ -36,7 +33,6 @@ def to_int(v):
 
 
 def do_save(args):
-
     with cy_serial_bridge.driver.CyMfgrIface(find_device(args), scb_index=args.scb) as dev:
         dev.connect()
         buf = dev.read_config()
@@ -70,11 +66,9 @@ def do_decode(args):
     # Just decode the configuration block, then exit.
     cfg_block = cy_serial_bridge.configuration_block.ConfigurationBlock(args.file)
     print(str(cfg_block))
-    return
 
 
 def do_reconfigure(args):
-
     with cy_serial_bridge.driver.CyMfgrIface(find_device(args), scb_index=args.scb) as dev:
         dev.connect()
 
@@ -116,7 +110,6 @@ def do_reconfigure(args):
 
 
 def do_change_type(args):
-
     # Convert type
     # Note: There is also a "JTAG" device class which can be set, but I'm unsure if this is actually
     # a valid setting as it doesn't appear in the config tool UI.
@@ -153,10 +146,16 @@ def do_change_type(args):
 
 if __name__ == "__main__" and "__file__" in globals():
     ap = ArgumentParser()
-    ap.add_argument("-V", "--vid", type=to_int, default=VID, help=f"VID of device to connect (default 0x{VID:04x})")
-    ap.add_argument("-P", "--pid", type=to_int, default=PID, help=f"PID of device to connect (default 0x{PID:04x})")
+    ap.add_argument(
+        "-V", "--vid", type=to_int, default=DEFAULT_VID, help=f"VID of device to connect (default 0x{DEFAULT_VID:04x})"
+    )
+    ap.add_argument(
+        "-P", "--pid", type=to_int, default=DEFAULT_PID, help=f"PID of device to connect (default 0x{DEFAULT_VID:04x})"
+    )
     ap.add_argument("-n", "--nth", type=int, default=0, help="Select Nth device (default 0)")
-    ap.add_argument("-s", "--scb", type=int, default=0, help="Select Nth SCB block (default 0).  Used for dual channel chips only.")
+    ap.add_argument(
+        "-s", "--scb", type=int, default=0, help="Select Nth SCB block (default 0).  Used for dual channel chips only."
+    )
     ap.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
 
     subparser = ap.add_subparsers()
@@ -169,19 +168,31 @@ if __name__ == "__main__" and "__file__" in globals():
     load_ap.add_argument("file", type=str, help="Bin file to load configuration from.")
     load_ap.set_defaults(func=do_load)
 
-    decode_ap = subparser.add_parser("decode", help="Decode and display basic information from configuration block bin file")
+    decode_ap = subparser.add_parser(
+        "decode", help="Decode and display basic information from configuration block bin file"
+    )
     decode_ap.add_argument("file", type=str, help="Bin file to decode")
     decode_ap.set_defaults(func=do_decode)
 
-    type_ap = subparser.add_parser("type", help="Set the type of device that the serial bridge acts as.  Used for configurable bridge devices (65211/65215)")
+    type_ap = subparser.add_parser(
+        "type",
+        help="Set the type of device that the serial bridge acts as.  Used for configurable bridge devices (65211/65215)",
+    )
     type_ap.add_argument("type", choices=["SPI", "I2C", "UART"])
     type_ap.set_defaults(func=do_change_type)
 
-    reconfigure_ap = subparser.add_parser("reconfigure", help="Change configuration of the connected device via the CLI")
-    reconfigure_ap.add_argument("--randomize-serno", action="store_true", help="Set the serial number of the device to a random value.")
-    reconfigure_ap.add_argument("--set-vid", type=to_int, help="Set the USB Vendor ID to a given value.  Needs a 0x prefix for hex values!")
-    reconfigure_ap.add_argument("--set-pid", type=to_int,
-                                help="Set the USB Product ID to a given value.  Needs a 0x prefix for hex values!")
+    reconfigure_ap = subparser.add_parser(
+        "reconfigure", help="Change configuration of the connected device via the CLI"
+    )
+    reconfigure_ap.add_argument(
+        "--randomize-serno", action="store_true", help="Set the serial number of the device to a random value."
+    )
+    reconfigure_ap.add_argument(
+        "--set-vid", type=to_int, help="Set the USB Vendor ID to a given value.  Needs a 0x prefix for hex values!"
+    )
+    reconfigure_ap.add_argument(
+        "--set-pid", type=to_int, help="Set the USB Product ID to a given value.  Needs a 0x prefix for hex values!"
+    )
     reconfigure_ap.set_defaults(func=do_reconfigure)
 
     opt = ap.parse_args()
@@ -192,5 +203,4 @@ if __name__ == "__main__" and "__file__" in globals():
 
     opt.func(opt)
 
-
-    #main(opt)
+    # main(opt)

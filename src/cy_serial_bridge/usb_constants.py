@@ -25,6 +25,9 @@ CY_SCB_INDEX_POS = 15
 USER_FLASH_PAGE_SIZE = 128
 USER_FLASH_SIZE = 512
 
+DEFAULT_VID = 0x04B4
+DEFAULT_PID = 0xE010
+
 
 class CyClass(IntEnum):
     DISABLED = 0x00  # None or the interface is disabled

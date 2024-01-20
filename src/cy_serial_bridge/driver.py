@@ -56,7 +56,7 @@ class I2CArbLostError(CySerialBridgeError):
     """
 
 
-def find_device(vid=None, pid=None) -> Iterator[usb1.USBDevice]:
+def find_device(vid=DEFAULT_VID, pid=DEFAULT_PID) -> Iterator[usb1.USBDevice]:
     """Finds USB device by VID/PID"""
     for dev in usb_context.getDeviceList(skip_on_error=True):
         if vid and dev.getVendorID() != vid:
