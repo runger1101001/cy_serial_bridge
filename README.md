@@ -52,15 +52,12 @@ This process will have to be redone the first time that the bridge is used in ea
 
 Also note that [NirSoft USBLogView](https://www.nirsoft.net/utils/usb_log_view.html) is extremely useful for answering the question of "what are the VID & PID of the USB device I just plugged in".
 
-#### Removing cyusb3
-If you have previously installed the cyusb3 driver, it will likely re-assert priority over the WinUSB driver whenever the bridge chip is reconfigured.  This will cause the Python code to be unable to open the bridge chip after any operation that changes its configuration block.  In order to fix this, we have to uninstall the cyusb3 driver from the driver store.
+# Setting Up New Devices
+When new CY76C65211 devices arrive, and you use USCU to configure them, they will get the Cypress VID (0x4b4), and can end up with one of several PID values (e.g. 0x0003, 0x0004, etc) depending on what model of chip they are and what mode they are configured as (I2C, SPI, etc).  
 
-I found a very useful guide to this process [here](https://github.com/pbatard/libwdi/wiki/Zadig#the-workaround).  In short, there are three steps:
-1. Download and run [NirSoft USBDeview](https://www.nirsoft.net/utils/usb_devices_view.html)
-2. Sort by the "Driver Filename" column (scroll sideways!) and find entries containing "CYUSB3.sys".  Then check the Driver InfPath column; for each one it should be a filename like "oem205.inf".
-3. For each of the inf filenames from step 2, run the following command from an administrator command prompt, replacing `<filename>` with the filename:
-```
-pnputil /delete-driver <filename> /force /uninstall
-```
+However, when using the chips with this driver, we generally want them to have a consistent VID & PID, so that the driver can reliably find them.  Additionally, using the default VID & PID causes major problems on Windows because Windows "knows" that Cypress's CYUSB3 driver is the best driver for this chip, so it will replace the WinUSB driver installed by Zadig with CYUSB3 each time the chip is re-plugged in.  
+
+To get around these issues, I'm adopting the convention that we'll assign CY7C65xx devices the regular Cypress VID, but use an arbitrary new VID of 0xE010.
+
 
 ## Using the Command-Line Reprogrammer
