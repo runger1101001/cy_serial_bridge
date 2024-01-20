@@ -144,7 +144,7 @@ def do_change_type(args):
         dev.reset_device()
 
 
-if __name__ == "__main__" and "__file__" in globals():
+def main():
     ap = ArgumentParser()
     ap.add_argument(
         "-V", "--vid", type=to_int, default=DEFAULT_VID, help=f"VID of device to connect (default 0x{DEFAULT_VID:04x})"
@@ -159,6 +159,7 @@ if __name__ == "__main__" and "__file__" in globals():
     ap.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
 
     subparser = ap.add_subparsers()
+    subparser.required = True  # Make sure argparse shows an error if no command is provided
 
     save_ap = subparser.add_parser("save", help="Save configuration block from connected device to bin file")
     save_ap.add_argument("file", type=str, help="Bin file to save configuration into.")
@@ -201,6 +202,9 @@ if __name__ == "__main__" and "__file__" in globals():
     logging.basicConfig(level=log_level)
     log.setLevel(log_level)
 
+    # call function defined by the subcommand (see the set_defaults() calls above)
     opt.func(opt)
 
-    # main(opt)
+
+if __name__ == "__main__":
+    main()

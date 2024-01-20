@@ -45,6 +45,9 @@ packages = [
 ]
 repository = 'https://github.com/mbed-ce/cy_serial_bridge/'
 
+[tool.poetry.scripts]
+cy_serial_bridge_cli = 'cy_serial_bridge.cli:main'
+
 [tool.poetry.urls]
 "Tracker" = 'https://github.com/mbed-ce/cy_serial_bridge/issues'
 

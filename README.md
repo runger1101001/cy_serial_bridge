@@ -57,7 +57,14 @@ When new CY76C65211 devices arrive, and you use USCU to configure them, they wil
 
 However, when using the chips with this driver, we generally want them to have a consistent VID & PID, so that the driver can reliably find them.  Additionally, using the default VID & PID causes major problems on Windows because Windows "knows" that Cypress's CYUSB3 driver is the best driver for this chip, so it will replace the WinUSB driver installed by Zadig with CYUSB3 each time the chip is re-plugged in.  
 
-To get around these issues, I'm adopting the convention that we'll assign CY7C65xx devices the regular Cypress VID, but use an arbitrary new VID of 0xE010.
+To get around these issues, I'm adopting the convention that we'll assign CY7C65xx devices the regular Cypress VID, but use an arbitrary new VID of 0xE010.  You can set this configuration on a new device with a command like:
+```shell
+cy_serial_bridge_cli --vid 0x04b4 --pid <pid of your device> reconfigure --set-pid 0x0E10
+```
+(note that this has to be run from a `poetry shell` if developing locally)
 
+Also note that adding `--randomize-serno` to that command will assign a random serial number to the chip, which is helpful for provisioning new boards.
+
+However, if you wish to use this in a real product, this strategy will not be usable, as we are basically "squatting" on Cypress's VID space without paying.  You will have to sort out a VID and PID value for yourself I'm afraid.
 
 ## Using the Command-Line Reprogrammer
