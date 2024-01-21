@@ -153,6 +153,8 @@ ignore = [
     'TRY003',  # Inline exception messages - Redundant with EM101
     'COM812',  # Missing trailing commas - incompatible with formatter
     'ISC001',  # Single line implicit string concatenation - incompatible with formatter
+    'TRY301',  # Don't call raise within a try block -- can I help it if other libraries don't use exceptions??
+    'TRY300',  # Returns within try blocks
 ]
 ignore-init-module-imports = true
 line-length = 120

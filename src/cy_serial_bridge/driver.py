@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import sys
 import time
 from dataclasses import dataclass
@@ -869,7 +870,7 @@ class CySPIControllerBridge(CySerBridgeBase):
                 request=CyVendorCmds.CY_SPI_GET_STATUS_CMD,
                 value=self.scb_index << CY_SCB_INDEX_POS,
                 index=0,
-                data=b"",
+                length=CySpi.GET_STATUS_LEN,
                 timeout=self.timeout,
             )
             == b"\x00\x00\x00\x00"
@@ -978,7 +979,7 @@ class CySPIControllerBridge(CySerBridgeBase):
         self.dev.controlWrite(
             request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
             request=CyVendorCmds.CY_SPI_READ_WRITE_CMD,
-            value=CySpi.WRITE_BIT,
+            value=(self.scb_index << CY_SCB_INDEX_POS) | CySpi.WRITE_BIT,
             index=len(tx_data),
             data=b"",
             timeout=io_timeout,
@@ -1007,5 +1008,147 @@ class CySPIControllerBridge(CySerBridgeBase):
             raise
 
         except usb1.USBErrorTimeout:
+            self._spi_reset()
+            raise
+
+    def spi_read(self, read_len: int, io_timeout: int | None = None) -> ByteSequence:
+        """
+        Perform an SPI read-only operation from the peripheral device.
+
+        Note: When you do a read-only operation, the data sent out of the MOSI line to the peripheral
+        seems to be undefined -- it could literally be any garbage bytes that the serial bridge had laying around
+        in memory.  So, unless your MOSI line is not hooked up, you probably want to use spi_transfer() instead.
+
+        :param read_len: Length to read, in words
+        :param io_timeout: Timeout for the transfer in ms.  Leave empty to compute a reasonable timeout automatically.
+            Set to 0 to wait forever.
+
+        :return: Bytes read from the device
+        """
+        if self._curr_frequency is None:
+            message = "Must call set_spi_configuration() before reading or writing data!"
+            raise CySerialBridgeError(message)
+
+        if io_timeout is None:
+            io_timeout = self._compute_timeout(read_len)
+
+        # Set up transfer
+        self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_SPI_READ_WRITE_CMD,
+            value=(self.scb_index << CY_SCB_INDEX_POS) | CySpi.READ_BIT,
+            index=read_len,
+            data=b"",
+            timeout=io_timeout,
+        )
+
+        # Get data.
+        # It seems like the hardware can send multiple packets.
+        try:
+            # Note: the Cypress driver had special logic that would, on Mac, split the bulk transfer into
+            # 64 byte read chunks.  The comments said it was to work around a libusb bug.  No idea
+            # if this is still an issue, but for now I decided to KISS by not doing that.
+
+            result = self.dev.bulkRead(self.ep_in, read_len, timeout=io_timeout)
+
+            if len(result) != read_len:
+                message = f"Expected {read_len} bytes but only received {len(result)} bytes from bulk read!"
+                raise CySerialBridgeError(message)
+
+            return result
+
+        except Exception:
+            # If anything went wrong, try and reset the SPI module so that the next transaction works
+            self._spi_reset()
+            raise
+
+    def spi_transfer(self, tx_data: ByteSequence, io_timeout: int | None = None) -> ByteSequence:
+        """
+        Perform an SPI read-and-write operation to the peripheral device.
+
+        The bytes in tx_data will be sent, and the response by the peripheral to each
+        byte will be recorded and returned.
+
+        Note: This operation will always read and write the same length of data.  So, you may need to add
+        additional padding to your tx_data to account for additional bytes that you want to read.
+
+        :param tx_data: Data to write
+        :param io_timeout: Timeout for the transfer in ms.  Leave empty to compute a reasonable timeout automatically.
+            Set to 0 to wait forever.
+        """
+        if self._curr_frequency is None:
+            message = "Must call set_spi_configuration() before reading or writing data!"
+            raise CySerialBridgeError(message)
+
+        if io_timeout is None:
+            io_timeout = self._compute_timeout(len(tx_data))
+
+        # Set up transfer
+        self.dev.controlWrite(
+            request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+            request=CyVendorCmds.CY_SPI_READ_WRITE_CMD,
+            value=(self.scb_index << CY_SCB_INDEX_POS) | CySpi.WRITE_BIT | CySpi.READ_BIT,
+            index=len(tx_data),
+            data=b"",
+            timeout=io_timeout,
+        )
+
+        try:
+            # Send and receive data at the same time using async API
+            tx_transfer = self.dev.getTransfer()
+            rx_transfer = self.dev.getTransfer()
+
+            tx_transfer.setBulk(self.ep_out, tx_data, timeout=io_timeout)
+            rx_transfer.setBulk(self.ep_in, len(tx_data), timeout=io_timeout)
+
+            tx_transfer.submit()
+            rx_transfer.submit()
+
+            start_time = time.time()
+
+            # Wait for both transfers to finish, polling libusb until they are.
+            while tx_transfer.isSubmitted() or rx_transfer.isSubmitted():
+                with contextlib.suppress(usb1.USBErrorInterrupted):  # Suppressing this exception is recommended by the python-libusb1 docs
+                    # Note: the best way to do this is to use libusb_handle_events_completed(),
+                    # which allows handling events until a specific transfer is completed.
+                    # That would allow us to cleanly block until the transfers are done.
+                    # However, python-libusb1 currently doesn't provide an abstraction for that
+                    # function.  Sadness.  So, we have to just keep polling instead.
+                    # TODO: Is it possible for this function to cause an infinite hang if there are no events to poll?
+                    # Seems like maybe it could but it's used this way in the python-libusb1 example so idk...
+                    usb_context.handleEvents()
+
+                if (time.time() - start_time) > io_timeout:
+                    raise usb1.USBErrorTimeout
+
+            if tx_transfer.getStatus() == usb1.TRANSFER_STALL:
+                # Attempt to handle pipe errors similarly to how the original driver did.
+                self.dev.clearHalt(self.ep_out)
+
+            if tx_transfer.getStatus() != usb1.TRANSFER_COMPLETED:
+                message = "Tx transfer failed with error " + repr(tx_transfer.getStatus())
+                raise CySerialBridgeError(message)
+
+            if rx_transfer.getStatus() != usb1.TRANSFER_COMPLETED:
+                message = "Rx transfer failed with error " + repr(rx_transfer.getStatus())
+                raise CySerialBridgeError(message)
+
+            if rx_transfer.getActualLength() != len(tx_data):
+                message = f"Expected {len(tx_data)} bytes but only received {rx_transfer.getActualLength()} bytes from bulk read!"
+                raise CySerialBridgeError(message)
+
+            # Poll for write completion.  Oddly, unlike I2C, there is no interrupt functionality to tell when
+            # the transfer is complete.
+            while not self._spi_is_write_done():
+                time.sleep(0.001)
+
+                if time.time() > start_time:
+                    message = "Timeout waiting for SPI write completion!"
+                    raise CySerialBridgeError(message)
+
+            return rx_transfer.getBuffer()
+
+        except Exception:
+            # If anything went wrong, try and reset the SPI module so that the next transaction works
             self._spi_reset()
             raise

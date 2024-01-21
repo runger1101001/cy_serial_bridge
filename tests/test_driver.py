@@ -214,10 +214,10 @@ def test_spi_config_read_write(serial_bridge: usb1.USBDevice):
     Test that we can read and write SPI configs from the device
     """
     print("Please connect jumpers on the eval kit:")
-    print("J17 = 2-5")
-    print("J19 = 2-3")
-    print("J21 = 2-3")
-    print("J20 = 2-5")
+    print("J17 = 2-5 [MISO]")
+    print("J19 = 2-3 [CS]")
+    print("J21 = 2-3 [SCLK]")
+    print("J20 = 2-5 [MOSI]")
     input("Press [ENTER] when done...")
 
     with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
@@ -250,3 +250,26 @@ def test_spi_config_read_write(serial_bridge: usb1.USBDevice):
         read_config_2 = dev.read_spi_configuration()
         print("Got back SPI configuration: " + repr(read_config_2))
         assert read_config_2 == config_2
+
+
+def test_spi_transactions(serial_bridge: usb1.USBDevice):
+    """
+    Test doing an SPI transaction with the CY7C652xx to the EEPROM on th edev board
+    """
+
+    with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
+        eeprom_spi_config = cy_serial_bridge.CySPIConfig(
+            frequency=2000000,  # EEPROM max frequency 5MHz, so we play it a bit safe with 2MHz
+            word_size=8,
+            mode=cy_serial_bridge.CySpiMode.MOTOROLA_MODE_0,  # EEPROM can use either SPI mode 0 or SPI mode 3
+            msbit_first=True,
+            continuous_ssel=True
+        )
+        dev.set_spi_configuration(eeprom_spi_config)
+
+        dev.spi_write(bytes([5, 0, 0]))
+
+        print(dev.spi_transfer(bytes([5, 0, 0])))
+
+
+# TODO do an SPI test showing how to use word sizes > 8
