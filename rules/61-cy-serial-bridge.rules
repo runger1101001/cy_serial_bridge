@@ -1,0 +1,3 @@
+# CY7C652xx USB-serial bridge chips, used with cy_serial_bridge driver.
+# This grants access to physically present users and users in the `plugdev` group.
+ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e010", MODE="660", GROUP="plugdev", TAG+="uaccess"

@@ -29,30 +29,52 @@ Additionally, I assume that it would be possible to brick your CY7C652xx by load
 
 ## Functionality
 ### Currently Supported
-- Basic reprogramming (changing type and serial number)
+- Basic reprogramming (changing type, VID/PID, and serial number)
 - I2C controller/master mode operation
+- SPI controller/master mode operation
 - User flash reading & writing
 ### Not supported yet
 - UART operation
-- SPI controller/master mode operation
 - I2C peripheral/slave mode operation
 - SPI peripheral/slave mode operation
 - CapSense
 - GPIO
 
+## Using the Command-Line Interface
+
+This driver installs a command-line interface script, `cy_serial_bridge_cli`.  It supports a number of functions:
+```
+usage: cy_serial_bridge_cli [-h] [-V VID] [-P PID] [-n NTH] [-s SCB] [-v] {save,load,decode,type,reconfigure} ...
+
+positional arguments:
+  {save,load,decode,type,reconfigure}
+    save                Save configuration block from connected device to bin file
+    load                Load configuration block to connected device from bin file
+    decode              Decode and display basic information from configuration block bin file
+    type                Set the type of device that the serial bridge acts as. Used for configurable bridge devices (65211/65215)
+    reconfigure         Change configuration of the connected device via the CLI
+
+options:
+  -h, --help            show this help message and exit
+  -V VID, --vid VID     VID of device to connect (default 0x04b4)
+  -P PID, --pid PID     PID of device to connect (default 0x04b4)
+  -n NTH, --nth NTH     Select Nth device (default 0)
+  -s SCB, --scb SCB     Select Nth SCB block (default 0). Used for dual channel chips only.
+  -v, --verbose         Enable verbose logging
+```
+
 ## OS-Specific Info
 
 ### Windows
-#### Attaching WinUSB
 On Windows, cy_serial_bridge (and other libusb based programs) cannot connect to USB devices unless they have the "WinUSB" driver attached to them.
 
 To set this up, you will need to use [Zadig](https://zadig.akeo.ie/).  Simply run this program, click "Options > List All Devices" in the menu, find whichever USB devices represent the CY7C652xx (you might have to look at the VID & PID values), and install the WinUSB driver for them.  Note that there will be at least two USB devices in the list for each bridge chip -- one for the communication interface and one for the configuration interface.  You need to install the driver for *both* for this driver to work.
 
-This process will have to be redone the first time that the bridge is used in each mode -- for example, if I connect a CY7C652xx to a fresh machine in SPI mode and install the driver using Zadig, then change the chip to operate in I2C mode in code, I would have to use Zadig again before Python code can open it in I2C mode.  Zadig installation will also have to be redone if the VID or PID is changed, though it should stick for multiple devices in the same mode and with the same VIDs/PIDs.
+This process might have to be redone the first time that the bridge is used in each mode -- for example, if I connect a CY7C652xx to a fresh machine in SPI mode and install the driver using Zadig, then change the chip to operate in I2C mode in code, I may have to use Zadig again before Python code can open it in I2C mode.  Zadig installation will also have to be redone if the VID or PID is changed, though it should stick for multiple devices in the same mode and with the same VIDs/PIDs.
 
 Also note that [NirSoft USBLogView](https://www.nirsoft.net/utils/usb_log_view.html) is extremely useful for answering the question of "what are the VID & PID of the USB device I just plugged in".
 
-# Setting Up New Devices
+## Setting Up New Devices
 When new CY76C65211 devices arrive, and you use USCU to configure them, they will get the Cypress VID (0x4b4), and can end up with one of several PID values (e.g. 0x0003, 0x0004, etc) depending on what model of chip they are and what mode they are configured as (I2C, SPI, etc).  
 
 However, when using the chips with this driver, we generally want them to have a consistent VID & PID, so that the driver can reliably find them.  Additionally, using the default VID & PID causes major problems on Windows because Windows "knows" that Cypress's CYUSB3 driver is the best driver for this chip, so it will replace the WinUSB driver installed by Zadig with CYUSB3 each time the chip is re-plugged in.  
@@ -65,6 +87,4 @@ cy_serial_bridge_cli --vid 0x04b4 --pid <pid of your device> reconfigure --set-p
 
 Also note that adding `--randomize-serno` to that command will assign a random serial number to the chip, which is helpful for provisioning new boards.
 
-However, if you wish to use this in a real product, this strategy will not be usable, as we are basically "squatting" on Cypress's VID space without paying.  You will have to sort out a VID and PID value for yourself I'm afraid.
-
-## Using the Command-Line Reprogrammer
+Be careful with this, though.  If you plan to use this driver in a real product, this strategy will not be usable, as we are basically "squatting" on Cypress's VID space without paying.  You will have to sort out a VID and PID value for yourself I'm afraid.

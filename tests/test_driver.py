@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import random
+import time
 
 import pytest
 import usb1
@@ -252,12 +253,15 @@ def test_spi_config_read_write(serial_bridge: usb1.USBDevice):
         assert read_config_2 == config_2
 
 
-def test_spi_transactions(serial_bridge: usb1.USBDevice):
+class M95M02Driver:
     """
-    Test doing an SPI transaction with the CY7C652xx to the EEPROM on th edev board
+    Rudimentary driver for the M95M02 SPI EEPRPOM on the EVK board
     """
 
-    with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
+    def __init__(self, dev: cy_serial_bridge.CySPIControllerBridge):
+        self._dev = dev
+
+        # Set correct SPI configuration
         eeprom_spi_config = cy_serial_bridge.CySPIConfig(
             frequency=2000000,  # EEPROM max frequency 5MHz, so we play it a bit safe with 2MHz
             word_size=8,
@@ -265,11 +269,74 @@ def test_spi_transactions(serial_bridge: usb1.USBDevice):
             msbit_first=True,
             continuous_ssel=True
         )
-        dev.set_spi_configuration(eeprom_spi_config)
+        self._dev.set_spi_configuration(eeprom_spi_config)
 
-        dev.spi_write(bytes([5, 0, 0]))
+    def read_status_register(self) -> int:
+        """
+        Read the status register byte from the EEPROM.
+        See datasheet Figure 11 for values.
+        """
+        result = self._dev.spi_transfer(bytes([0x5, 0, 0]))
+        return result[1]
 
-        print(dev.spi_transfer(bytes([5, 0, 0])))
+    def write(self, address: int, data: bytes):
+        """
+        Write the given bytes to the given address.
+        Address may be any value between 0 and 262143.
+        Up to one page (256 bytes) of data may be written in one write operation.
+        However, the write may not cross page boundaries.
+        For example, if writing to address 512, you may write up to 256 bytes.
+        However, if writing to address 760 (768 - 8), you may only write up to 8 bytes.
+        """
+
+        # First we need to enable writing
+        self._dev.spi_write(bytes([0x6])) # WREN
+
+        # Status register should now indicate that writes are enabled
+        assert self.read_status_register() == 0x2
+
+        # Send write command
+        self._dev.spi_write(bytes([0x2, (address >> 16) & 0xFF, (address >> 8) & 0xFF, address & 0xFF]) + data)
+
+        # Status register should read as 1 for up to 10ms until the write completes
+        wait_start_time = time.time()
+        while time.time() - wait_start_time <= 0.01:
+            if (self.read_status_register() & 0x1) == 0:
+                break
+
+        # Status register should now be 0, indicating write complete
+        assert self.read_status_register() == 0
+
+    def read(self, address: int, read_len: int):
+        """
+        Read data from the EEPROM.
+        There are no page limits for reading -- you may read any number of bytes from any page in the device.
+        """
+
+        tx_bytes = bytes([0x3, (address >> 16) & 0xFF, (address >> 8) & 0xFF, address & 0xFF]) + b"\x00" * read_len
+        return self._dev.spi_transfer(tx_bytes)[4:]
+
+
+def test_spi_transactions(serial_bridge: usb1.USBDevice):
+    """
+    Test doing an SPI transaction with the CY7C652xx to the EEPROM on the dev board
+    """
+
+    with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
+        eeprom_driver = M95M02Driver(dev)
+
+        random_number = random.randint(0, 10 ** 8 - 1)
+        eeprom_message = f"Hello from M95M02 EEPROM! Number is {random_number:08}".encode()
+
+        # Program the message into the 3rd page
+        eeprom_driver.write(514, eeprom_message)
+
+        # Read the data back and make sure it's correct
+        readback = eeprom_driver.read(514, len(eeprom_message))
+        assert readback == eeprom_message
+
+
+
 
 
 # TODO do an SPI test showing how to use word sizes > 8

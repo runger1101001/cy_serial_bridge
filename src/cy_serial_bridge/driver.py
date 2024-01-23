@@ -864,8 +864,7 @@ class CySPIControllerBridge(CySerBridgeBase):
         """
         Poll the SPI status indicator to determine if a write is done
         """
-        return (
-            self.dev.controlRead(
+        spi_status = self.dev.controlRead(
                 request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
                 request=CyVendorCmds.CY_SPI_GET_STATUS_CMD,
                 value=self.scb_index << CY_SCB_INDEX_POS,
@@ -873,8 +872,8 @@ class CySPIControllerBridge(CySerBridgeBase):
                 length=CySpi.GET_STATUS_LEN,
                 timeout=self.timeout,
             )
-            == b"\x00\x00\x00\x00"
-        )
+
+        return spi_status == b"\x00\x00\x00\x00"
 
     def set_spi_configuration(self, config: CySPIConfig):
         """
@@ -995,7 +994,7 @@ class CySPIControllerBridge(CySerBridgeBase):
             while not self._spi_is_write_done():
                 time.sleep(0.001)
 
-                if time.time() > write_start_time:
+                if time.time() > write_start_time + io_timeout:
                     message = "Timeout waiting for SPI write completion!"
                     raise CySerialBridgeError(message)
 
@@ -1114,8 +1113,9 @@ class CySPIControllerBridge(CySerBridgeBase):
                     # That would allow us to cleanly block until the transfers are done.
                     # However, python-libusb1 currently doesn't provide an abstraction for that
                     # function.  Sadness.  So, we have to just keep polling instead.
-                    # TODO: Is it possible for this function to cause an infinite hang if there are no events to poll?
-                    # Seems like maybe it could but it's used this way in the python-libusb1 example so idk...
+                    # This is will work OK, but only as long as libusb is not used from another
+                    # thread at the same time.
+                    # Reference: https://libusb.sourceforge.io/api-1.0/libusb_mtasync.html#Using
                     usb_context.handleEvents()
 
                 if (time.time() - start_time) > io_timeout:
@@ -1142,7 +1142,7 @@ class CySPIControllerBridge(CySerBridgeBase):
             while not self._spi_is_write_done():
                 time.sleep(0.001)
 
-                if time.time() > start_time:
+                if time.time() > start_time + io_timeout:
                     message = "Timeout waiting for SPI write completion!"
                     raise CySerialBridgeError(message)
 

@@ -150,7 +150,7 @@ def main():
         "-V", "--vid", type=to_int, default=DEFAULT_VID, help=f"VID of device to connect (default 0x{DEFAULT_VID:04x})"
     )
     ap.add_argument(
-        "-P", "--pid", type=to_int, default=DEFAULT_PID, help=f"PID of device to connect (default 0x{DEFAULT_VID:04x})"
+        "-P", "--pid", type=to_int, default=DEFAULT_PID, help=f"PID of device to connect (default 0x{DEFAULT_PID:04x})"
     )
     ap.add_argument("-n", "--nth", type=int, default=0, help="Select Nth device (default 0)")
     ap.add_argument(
