@@ -288,12 +288,15 @@ class CySerBridgeBase:
         w_index = 0xADBA
         data = b""
 
-        # Resetting the device always seems to result in a pipe error -- it seems like the
+        # Resetting the device always seems to result in a pipe error on windows and
+        # a no device error on Linux -- it seems like the
         # low level USB control operation always returns USBD_STATUS_XACT_ERROR (0xc0000011)
         try:
             self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, data, self.timeout)
         except usb1.USBErrorPipe:
-            return
+            pass
+        except usb1.USBErrorNoDevice:
+            pass
 
     def program_user_flash(self, addr: int, buff: ByteSequence):
         """
@@ -865,13 +868,13 @@ class CySPIControllerBridge(CySerBridgeBase):
         Poll the SPI status indicator to determine if a write is done
         """
         spi_status = self.dev.controlRead(
-                request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
-                request=CyVendorCmds.CY_SPI_GET_STATUS_CMD,
-                value=self.scb_index << CY_SCB_INDEX_POS,
-                index=0,
-                length=CySpi.GET_STATUS_LEN,
-                timeout=self.timeout,
-            )
+            request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
+            request=CyVendorCmds.CY_SPI_GET_STATUS_CMD,
+            value=self.scb_index << CY_SCB_INDEX_POS,
+            index=0,
+            length=CySpi.GET_STATUS_LEN,
+            timeout=self.timeout,
+        )
 
         return spi_status == b"\x00\x00\x00\x00"
 
@@ -1107,7 +1110,9 @@ class CySPIControllerBridge(CySerBridgeBase):
 
             # Wait for both transfers to finish, polling libusb until they are.
             while tx_transfer.isSubmitted() or rx_transfer.isSubmitted():
-                with contextlib.suppress(usb1.USBErrorInterrupted):  # Suppressing this exception is recommended by the python-libusb1 docs
+                with contextlib.suppress(
+                    usb1.USBErrorInterrupted
+                ):  # Suppressing this exception is recommended by the python-libusb1 docs
                     # Note: the best way to do this is to use libusb_handle_events_completed(),
                     # which allows handling events until a specific transfer is completed.
                     # That would allow us to cleanly block until the transfers are done.

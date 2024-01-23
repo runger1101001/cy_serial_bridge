@@ -267,7 +267,7 @@ class M95M02Driver:
             word_size=8,
             mode=cy_serial_bridge.CySpiMode.MOTOROLA_MODE_0,  # EEPROM can use either SPI mode 0 or SPI mode 3
             msbit_first=True,
-            continuous_ssel=True
+            continuous_ssel=True,
         )
         self._dev.set_spi_configuration(eeprom_spi_config)
 
@@ -290,7 +290,7 @@ class M95M02Driver:
         """
 
         # First we need to enable writing
-        self._dev.spi_write(bytes([0x6])) # WREN
+        self._dev.spi_write(bytes([0x6]))  # WREN
 
         # Status register should now indicate that writes are enabled
         assert self.read_status_register() == 0x2
@@ -325,7 +325,7 @@ def test_spi_transactions(serial_bridge: usb1.USBDevice):
     with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
         eeprom_driver = M95M02Driver(dev)
 
-        random_number = random.randint(0, 10 ** 8 - 1)
+        random_number = random.randint(0, 10**8 - 1)
         eeprom_message = f"Hello from M95M02 EEPROM! Number is {random_number:08}".encode()
 
         # Program the message into the 3rd page
@@ -334,9 +334,6 @@ def test_spi_transactions(serial_bridge: usb1.USBDevice):
         # Read the data back and make sure it's correct
         readback = eeprom_driver.read(514, len(eeprom_message))
         assert readback == eeprom_message
-
-
-
 
 
 # TODO do an SPI test showing how to use word sizes > 8
