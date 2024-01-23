@@ -10,7 +10,7 @@ One disadvantage of the CY7C652xx chips is that their software options are somew
 
 However, the available drivers provide absolutely no provision for reprogramming the "configuration block", the binary structure stored in the chip's flash memory which defines its USB attributes.  This includes manufacturer-set stuff such as the VID, PID, and serial number, but also the flag that tells it whether it should be a UART, I2C, or SPI bridge, and the default settings which are used for each bus type.  The configuration block can only be programmed using the closed-source Cypress USB Serial Configuration Utility (USCU) -- and to add to the pain, this is only available as a Windows GUI application!
 
-This driver is being worked on with the goal of, in addition to providing a translation of the normal C driver into Python, also reverse-engineering the format of the config block and providing utilities to modify and rewrite it.  Basic config rewriting functionality is working, and I have been able to dynamically edit the parameters of a CY7C65211 and change it between I2C, SPI, and UART mode!
+This driver is being worked on with the goal of, in addition to providing a translation of the normal C driver into Python, also reverse-engineering the format of the config block and providing utilities to modify and rewrite it.  Basic config rewriting functionality is working, and I have been able to dynamically edit the parameters of a CY7C65211 and change it between I2C, SPI, and UART mode!  Additionally, since the code quality of the libusb1 driver is... not great (it uses multiple threads internally for no good reason I can find), I've been trying to clean up and simplify the way that data is transferred to and from the device.
 
 ### You *should* use this driver if you want to
 - Have a nice Python API for interacting with CY7C652xx bridge chips in UART, I2C, and SPI mode
@@ -63,6 +63,17 @@ options:
   -v, --verbose         Enable verbose logging
 ```
 
+In particular, the `reconfigure` option can be used to edit settings of a connected device, then write those settings back.  The options you pass tell it what to reconfigure:
+```
+usage: cy_serial_bridge_cli reconfigure [-h] [--randomize-serno] [--set-vid SET_VID] [--set-pid SET_PID]
+
+options:
+  -h, --help         show this help message and exit
+  --randomize-serno  Set the serial number of the device to a random value.
+  --set-vid SET_VID  Set the USB Vendor ID to a given value. Needs a 0x prefix for hex values!
+  --set-pid SET_PID  Set the USB Product ID to a given value. Needs a 0x prefix for hex values!
+```
+
 ## OS-Specific Info
 
 ### Windows
@@ -73,6 +84,23 @@ To set this up, you will need to use [Zadig](https://zadig.akeo.ie/).  Simply ru
 This process might have to be redone the first time that the bridge is used in each mode -- for example, if I connect a CY7C652xx to a fresh machine in SPI mode and install the driver using Zadig, then change the chip to operate in I2C mode in code, I may have to use Zadig again before Python code can open it in I2C mode.  Zadig installation will also have to be redone if the VID or PID is changed, though it should stick for multiple devices in the same mode and with the same VIDs/PIDs.
 
 Also note that [NirSoft USBLogView](https://www.nirsoft.net/utils/usb_log_view.html) is extremely useful for answering the question of "what are the VID & PID of the USB device I just plugged in".
+
+### Linux
+To grant access to the serial bridge USB device without root, you will need to install a udev rules file.  We've provided one for you under the `rules` folder of this repository.  First, copy it to the `/etc/udev/rules.d` folder.  Then, run:
+```shell
+$ sudo udevadm control --reload-rules
+$ sudo udevadm trigger
+```
+
+Finally, make sure your user is in the `plugdev` group:
+```shell
+$ sudo usermod -a -G plugdev <your username>
+```
+(you may have to log out and back in for this to take effect)
+
+This should allow you to access the serial bridge chip without any special privileges.  
+
+Note, however, that the rules file is written for the driver default VID and PID values (see "Setting Up New Devices").  If your device is using different VID & PID values (e.g. a factory new chip), you will need to update the rules file or temporarily run as root.
 
 ## Setting Up New Devices
 When new CY76C65211 devices arrive, and you use USCU to configure them, they will get the Cypress VID (0x4b4), and can end up with one of several PID values (e.g. 0x0003, 0x0004, etc) depending on what model of chip they are and what mode they are configured as (I2C, SPI, etc).  

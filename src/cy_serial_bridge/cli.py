@@ -136,7 +136,7 @@ def do_change_type(args):
 
             log.info("Done!")
 
-        except:
+        except Exception:
             dev.disconnect()
             raise
 
