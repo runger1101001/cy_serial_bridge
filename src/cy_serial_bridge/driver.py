@@ -212,13 +212,10 @@ class CySerBridgeBase:
         return self
 
     def __exit__(self, err_type, err_value, tb):
-
-        try:
+        # On Linux, calling reset_device() causes this error to be raised when we try to close the device.
+        # Ignore it so that we can close the device without an error.
+        with contextlib.suppress(usb1.USBErrorNoDevice):
             self.dev.releaseInterface(self.if_num)
-        except usb1.USBErrorNoDevice:
-            # On Linux, calling reset_device() causes this error to be raised when we try to close the device.
-            # Ignore it so that we can close the device without an error.
-            pass
 
         if self.dev:
             self.dev.close()
