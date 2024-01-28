@@ -15,7 +15,7 @@ poetry shell # This activates a virtual environment containing the dependencies
 
 ### Running Formatter
 ```shell
-poetry run ruff check --fix src
+poetry run ruff check --fix .
 poetry run ruff format .
 ```
 

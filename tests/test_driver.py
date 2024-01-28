@@ -274,6 +274,7 @@ class M95M02Driver:
     def read_status_register(self) -> int:
         """
         Read the status register byte from the EEPROM.
+
         See datasheet Figure 11 for values.
         """
         result = self._dev.spi_transfer(bytes([0x5, 0, 0]))
@@ -282,13 +283,13 @@ class M95M02Driver:
     def write(self, address: int, data: bytes):
         """
         Write the given bytes to the given address.
+
         Address may be any value between 0 and 262143.
         Up to one page (256 bytes) of data may be written in one write operation.
         However, the write may not cross page boundaries.
         For example, if writing to address 512, you may write up to 256 bytes.
         However, if writing to address 760 (768 - 8), you may only write up to 8 bytes.
         """
-
         # First we need to enable writing
         self._dev.spi_write(bytes([0x6]))  # WREN
 
@@ -310,9 +311,9 @@ class M95M02Driver:
     def read(self, address: int, read_len: int):
         """
         Read data from the EEPROM.
+
         There are no page limits for reading -- you may read any number of bytes from any page in the device.
         """
-
         tx_bytes = bytes([0x3, (address >> 16) & 0xFF, (address >> 8) & 0xFF, address & 0xFF]) + b"\x00" * read_len
         return self._dev.spi_transfer(tx_bytes)[4:]
 
@@ -321,7 +322,6 @@ def test_spi_transactions(serial_bridge: usb1.USBDevice):
     """
     Test doing an SPI transaction with the CY7C652xx to the EEPROM on the dev board
     """
-
     with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
         eeprom_driver = M95M02Driver(dev)
 

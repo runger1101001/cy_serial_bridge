@@ -1,6 +1,7 @@
 import logging
 import pathlib
 import random
+import sys
 from argparse import ArgumentParser
 
 import usb1
@@ -149,7 +150,32 @@ def do_scan(args):
     Scan for candidate USB devices on the system
     """
     scan_filter = None if args.all else {(args.vid, args.pid)}
-    cy_serial_bridge.device_discovery.list_devices(scan_filter)
+    devices = cy_serial_bridge.device_discovery.list_devices(scan_filter)
+
+    if devices is None:
+        if args.all:
+            print("No devices found on the system that look like a CY7C652xx!")
+        else:
+            print(f"No devices found on the system with VID:PID {args.vid:04x}:{args.pid:04x}.")
+            print("Maybe try again with --all to search all VIDs and PIDs?")
+    else:
+        print("Detected Devices:")
+        for device in devices:
+            if device.open_failed:
+                if sys.platform == "win32":
+                    print(
+                        f"- {args.vid:04x}:{args.pid:04x} (Type: {device.curr_cytype.name}) <Open failed, cannot get "
+                        f"name or serno.  Attach WinUSB driver with Zadig!>"
+                    )
+                else:
+                    print(
+                        f"- {args.vid:04x}:{args.pid:04x} (Type: {device.curr_cytype.name}) <Open failed, cannot get "
+                        f"name or serial number>"
+                    )
+            else:
+                print(
+                    f"- {args.vid:04x}:{args.pid:04x} {device.manufacturer_str} {device.product_str} (SerNo: {device.serial_number}) (Type: {device.curr_cytype.name})"
+                )
 
 
 def main():
