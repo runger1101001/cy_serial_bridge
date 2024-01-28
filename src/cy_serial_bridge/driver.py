@@ -6,7 +6,12 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from math import ceil
-from typing import Iterator, Tuple, cast
+from typing import TYPE_CHECKING, Callable, Tuple, Union, cast
+
+if TYPE_CHECKING:
+    from types import TracebackType
+
+    from typing_extensions import Self
 
 import usb1  # from 'libusb1' package
 
@@ -50,44 +55,37 @@ class I2CArbLostError(CySerialBridgeError):
     """
 
 
-def find_device(vid=DEFAULT_VID, pid=DEFAULT_PID) -> Iterator[usb1.USBDevice]:
-    """Finds USB device by VID/PID"""
-    for dev in usb_context.getDeviceList(skip_on_error=True):
-        if vid and dev.getVendorID() != vid:
-            continue
-        if pid and dev.getProductID() != pid:
-            continue
-        yield dev
+USBPathEntry = Union[usb1.USBDevice, usb1.USBConfiguration, usb1.USBInterface, usb1.USBInterfaceSetting]
 
 
-def find_path(ux, func, hist):
+def _find_path(ux: USBPathEntry, func: Callable[[USBPathEntry], bool], hist: list[USBPathEntry]):
     """Scans through USB device structure"""
     try:
         hist.insert(0, ux)
         if func(ux):
             yield hist.copy()
         for ux_child in ux:
-            yield from find_path(ux_child, func, hist)
+            yield from _find_path(ux_child, func, hist)
     except TypeError:
         pass
     finally:
         hist.pop(0)
 
 
-def get_type(us):
+def _get_type(us: usb1.USBInterfaceSetting) -> CyType:
     """Returns CY_TYPE of USB Setting"""
     if us.getClass() == CyClass.VENDOR:
         return CyType(us.getSubClass())
     return CyType.DISABLED
 
 
-def find_type(ud: usb1.USBDevice, cy_type):
+def _find_type(ud: usb1.USBDevice, cy_type):
     """Finds USB interface by CY_TYPE. Yields list of (us, ui, uc, ud) set"""
 
-    def check_match(ux):
-        return isinstance(ux, usb1.USBInterfaceSetting) and get_type(ux) == cy_type
+    def check_match(ux: USBPathEntry) -> bool:
+        return isinstance(ux, usb1.USBInterfaceSetting) and _get_type(ux) == cy_type
 
-    yield from find_path(ud, check_match, [])
+    yield from _find_path(ud, check_match, [])
 
 
 class CySerBridgeBase:
@@ -110,7 +108,7 @@ class CySerBridgeBase:
 
         self.cy_type = cy_type
         self.scb_index = scb_index
-        found = list(find_type(ud, cy_type))
+        found = list(_find_type(ud, cy_type))
         if not found:
             message = "No device found with given type"
             raise CySerialBridgeError(message)
@@ -122,7 +120,6 @@ class CySerBridgeBase:
         us: usb1.USBInterfaceSetting
         ui: usb1.USBInterface
         uc: usb1.USBConfiguration
-        ud: usb1.USBDevice
         us, ui, uc, ud = found[scb_index]
         self.us_num = us.getAlternateSetting()
         self.if_num = us.getNumber()
@@ -164,7 +161,7 @@ class CySerBridgeBase:
             # detach kernel driver to gain access
             self.dev.setAutoDetachKernelDriver(True)
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         try:
             #
             # NOTE:
@@ -183,7 +180,7 @@ class CySerBridgeBase:
             if signature != b"CYUS":
                 # __exit__ won't be called if we raise an exception here
                 self.dev.releaseInterface(self.if_num)
-                self.close()
+                self.dev.close()
 
                 message = "Invalid signature for CY7C652xx device"
                 raise CySerialBridgeError(message)
@@ -204,7 +201,9 @@ class CySerBridgeBase:
 
         return self
 
-    def __exit__(self, err_type, err_value, tb):
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None
+    ) -> None:
         # On Linux, calling reset_device() causes this error to be raised when we try to close the device.
         # Ignore it so that we can close the device without an error.
         with contextlib.suppress(usb1.USBErrorNoDevice):
@@ -270,7 +269,7 @@ class CySerBridgeBase:
 
         return self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
 
-    def reset_device(self):
+    def reset_device(self) -> None:
         """
         The API will reset the device by sending a vendor request to the firmware. The device will be re-enumerated.
 
@@ -379,7 +378,7 @@ class CyMfgrIface(CySerBridgeBase):
     # Non-public APIs still under experimental stage
     ######################################################################
 
-    def ping(self):
+    def ping(self) -> int:
         """Send whatever USCU sends on startup"""
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
         bm_request = 203
@@ -387,9 +386,9 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0
         w_buffer = bytearray(0)
 
-        return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
+        return cast(int, self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout))
 
-    def probe0(self):
+    def probe0(self) -> int:
         """Send whatever USCU sends on startup - some signature?"""
         bm_request_type = CY_VENDOR_REQUEST | EP_IN
         bm_request = 177
@@ -397,12 +396,12 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0
         w_length = 4
 
-        return self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
+        return cast(int, self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout))
 
     # Note that there used to be a "probe1" function here for another mystery sequence, but that was revealed to be just
     # getting the firmware version (equivalent to get_firmware_version())
 
-    def connect(self):
+    def connect(self) -> int:
         """Send whatever USCU sends on connect"""
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
         bm_request = 226
@@ -410,9 +409,9 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0xB1B0
         w_buffer = bytearray(0)
 
-        return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
+        return cast(int, self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout))
 
-    def disconnect(self):
+    def disconnect(self) -> int:
         """Send whatever USCU sends on disconnect"""
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
         bm_request = 226
@@ -420,7 +419,7 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0xB9B0
         w_buffer = bytearray(0)
 
-        return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
+        return cast(int, self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout))
 
     def read_config(self) -> ByteSequence:
         """Send whatever USCU sends on config read"""
@@ -430,9 +429,11 @@ class CyMfgrIface(CySerBridgeBase):
         w_index = 0
         w_length = 512
 
-        return self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
+        return cast(
+            bytearray, self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
+        )
 
-    def write_config(self, config: ConfigurationBlock):
+    def write_config(self, config: ConfigurationBlock) -> int:
         """Send whatever USCU sends on config write"""
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
         bm_request = 182
@@ -441,7 +442,7 @@ class CyMfgrIface(CySerBridgeBase):
 
         w_buffer = config.config_bytes
 
-        return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
+        return cast(int, self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout))
 
     def change_type(self, new_type: CyType):
         """
@@ -496,7 +497,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         self._curr_frequency: int | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         super().__enter__()
 
         # Reset the I2C peripheral in case it was in a bad state (e.g. if a previous errored operation
@@ -532,13 +533,13 @@ class CyI2CControllerBridge(CySerBridgeBase):
             timeout=self.timeout,
         )
 
-    def _i2c_reset(self, mode: CyI2c) -> bytes:
+    def _i2c_reset(self, mode: CyI2c) -> None:
         """
         This API resets the read or write I2C module whenever there is an error in a data transaction.
 
         :param mode: Either CyI2c.MODE_WRITE or CyI2c.MODE_READ
         """
-        return self.dev.controlWrite(
+        self.dev.controlWrite(
             request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
             request=CyVendorCmds.CY_I2C_RESET_CMD,
             value=(self.scb_index << CY_SCB_INDEX_POS) | mode,
@@ -655,7 +656,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         # Get data
         try:
-            read_data = self.dev.bulkRead(self.ep_in, size, timeout=io_timeout)
+            read_data: bytearray = self.dev.bulkRead(self.ep_in, size, timeout=io_timeout)
             post_transfer_status = self.dev.interruptRead(self.ep_intr, CyI2c.EVENT_NOTIFICATION_LEN, io_timeout)
 
         except usb1.USBErrorPipe as ex:
@@ -874,13 +875,13 @@ class CySPIControllerBridge(CySerBridgeBase):
         Compute a reasonable timeout for an SPI transaction.
         """
         # Assume 9 bit times per byte plus 1 second wiggle room
-        return 1000 + ceil(1000 * transaction_size_bytes * (1 / self._curr_frequency) * 9)
+        return 1000 + ceil(1000 * transaction_size_bytes * (1 / cast(int, self._curr_frequency)) * 9)
 
-    def _spi_reset(self) -> bytes:
+    def _spi_reset(self) -> None:
         """
         This API resets the SPI module whenever there is an error in a data transaction.
         """
-        return self.dev.controlWrite(
+        self.dev.controlWrite(
             request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
             request=CyVendorCmds.CY_SPI_RESET_CMD,
             value=self.scb_index << CY_SCB_INDEX_POS,
@@ -893,7 +894,7 @@ class CySPIControllerBridge(CySerBridgeBase):
         """
         Poll the SPI status indicator to determine if a write is done
         """
-        spi_status = self.dev.controlRead(
+        spi_status: bytearray = self.dev.controlRead(
             request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
             request=CyVendorCmds.CY_SPI_GET_STATUS_CMD,
             value=self.scb_index << CY_SCB_INDEX_POS,
@@ -947,7 +948,7 @@ class CySPIControllerBridge(CySerBridgeBase):
             timeout=self.timeout,
         )
 
-    def read_spi_configuration(self) -> CyI2CConfig:
+    def read_spi_configuration(self) -> CySPIConfig:
         """
         Read the current SPI master mode configuration from the device.
         """
@@ -1077,7 +1078,7 @@ class CySPIControllerBridge(CySerBridgeBase):
             # 64 byte read chunks.  The comments said it was to work around a libusb bug.  No idea
             # if this is still an issue, but for now I decided to KISS by not doing that.
 
-            result = self.dev.bulkRead(self.ep_in, read_len, timeout=io_timeout)
+            result: bytearray = self.dev.bulkRead(self.ep_in, read_len, timeout=io_timeout)
 
             if len(result) != read_len:
                 message = f"Expected {read_len} bytes but only received {len(result)} bytes from bulk read!"

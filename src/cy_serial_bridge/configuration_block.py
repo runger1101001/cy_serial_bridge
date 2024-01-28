@@ -60,7 +60,7 @@ class ConfigurationBlock:
             message = f"Checksum failed for configuration block.  Expected 0x{self._calculate_checksum():x} but read 0x{self._get_checksum():x} from header"
             raise ValueError(message)
 
-    def _decode_string_field(self, flag_addr, data_start_addr) -> str | None:
+    def _decode_string_field(self, flag_addr: int, data_start_addr: int) -> str | None:
         """
         Decode a variable-length string from the config block.
 
@@ -88,7 +88,7 @@ class ConfigurationBlock:
             message = "Unparseable data in descriptor"
             raise ValueError(message)
 
-    def _encode_string_field(self, flag_addr, data_start_addr, value: str | None):
+    def _encode_string_field(self, flag_addr: int, data_start_addr: int, value: str | None) -> None:
         """
         Encode a variable-length string from the config block.
 
@@ -117,11 +117,13 @@ class ConfigurationBlock:
 
     def _calculate_checksum(self) -> int:
         """Return checksum of 512-byte config bytes"""
-        return 0xFFFFFFFF & sum(struct.unpack("<125I", self._cfg_bytes[12:]))
+        checksum: int = sum(struct.unpack("<125I", self._cfg_bytes[12:]))
+        return 0xFFFFFFFF & checksum
 
-    def _get_checksum(self):
+    def _get_checksum(self) -> int:
         """Extract checksum value in 512-byte config bytes"""
-        return struct.unpack("<I", self._cfg_bytes[8:12])[0]
+        checksum: int = struct.unpack("<I", self._cfg_bytes[8:12])[0]
+        return checksum
 
     @property
     def device_type(self) -> CyType:
@@ -131,7 +133,7 @@ class ConfigurationBlock:
         return CyType(self._cfg_bytes[0x1C])
 
     @device_type.setter
-    def device_type(self, value: CyType):
+    def device_type(self, value: CyType) -> None:
         self._cfg_bytes[0x1C] = value.value
 
     @property
@@ -160,10 +162,11 @@ class ConfigurationBlock:
         """
         USB Vendor ID of the device
         """
-        return struct.unpack("<H", self._cfg_bytes[0x94:0x96])[0]
+        vid: int = struct.unpack("<H", self._cfg_bytes[0x94:0x96])[0]
+        return vid
 
     @vid.setter
-    def vid(self, value: int):
+    def vid(self, value: int) -> None:
         self._cfg_bytes[0x94:0x96] = struct.pack("<H", (value))
 
     @property
@@ -171,10 +174,11 @@ class ConfigurationBlock:
         """
         USB Product ID of the device
         """
-        return struct.unpack("<H", self._cfg_bytes[0x96:0x98])[0]
+        pid: int = struct.unpack("<H", self._cfg_bytes[0x96:0x98])[0]
+        return pid
 
     @pid.setter
-    def pid(self, value: int):
+    def pid(self, value: int) -> None:
         self._cfg_bytes[0x96:0x98] = struct.pack("<H", (value))
 
     @property
@@ -187,7 +191,7 @@ class ConfigurationBlock:
         return self._decode_string_field(0xA0, 0xEE)
 
     @mfgr_string.setter
-    def mfgr_string(self, value: str | None):
+    def mfgr_string(self, value: str | None) -> None:
         self._encode_string_field(0xA0, 0xEE, value)
 
     @property
@@ -200,7 +204,7 @@ class ConfigurationBlock:
         return self._decode_string_field(0xA4, 0x130)
 
     @product_string.setter
-    def product_string(self, value: str | None):
+    def product_string(self, value: str | None) -> None:
         self._encode_string_field(0xA4, 0x130, value)
 
     @property
@@ -214,7 +218,7 @@ class ConfigurationBlock:
         return self._decode_string_field(0xA8, 0x172)
 
     @serial_number.setter
-    def serial_number(self, value: str | None):
+    def serial_number(self, value: str | None) -> None:
         if value is not None and re.fullmatch(r"[0-9a-zA-Z]+", value) is None:
             message = "Serial number may only be set to alphanumeric characters"
             raise ValueError(message)
@@ -222,7 +226,7 @@ class ConfigurationBlock:
         self._encode_string_field(0xA8, 0x172, value)
 
     @property
-    def config_bytes(self):
+    def config_bytes(self) -> bytes:
         """
         Get the raw configuration bytes for this buffer.
 

@@ -7,8 +7,6 @@ out and API/code/tools need further refactoring.
 
 """
 
-import usb1  # from "libusb1" package
-
 from cy_serial_bridge import configuration_block, device_discovery, driver
 from cy_serial_bridge.configuration_block import ConfigurationBlock
 from cy_serial_bridge.device_discovery import OpenMode, list_devices, open_device

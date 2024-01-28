@@ -13,9 +13,10 @@ poetry install --with=linters --with=tests
 poetry shell # This activates a virtual environment containing the dependencies
 ```
 
-### Running Formatter
+### Running Linters and Formatter
 ```shell
 poetry run ruff check --fix .
+poetry run mypy -p cy_serial_bridge
 poetry run ruff format .
 ```
 

@@ -3,18 +3,22 @@ import pathlib
 import random
 import sys
 from argparse import ArgumentParser
+from typing import Any, cast
 
 import cy_serial_bridge
 from cy_serial_bridge.usb_constants import DEFAULT_PID, DEFAULT_VID
 from cy_serial_bridge.utils import log
 
 
-def to_int(v):
+def to_int(v: str) -> int:
     return int(v, 0)
 
 
-def do_save(args):
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE) as dev:
+def do_save(args: Any) -> None:
+    with cast(
+        cy_serial_bridge.driver.CyMfgrIface,
+        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+    ) as dev:
         dev.connect()
         buf = dev.read_config()
         dev.disconnect()
@@ -27,8 +31,11 @@ def do_save(args):
         pathlib.Path(args.file).write_bytes(bytes(buf))
 
 
-def do_load(args):
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE) as dev:
+def do_load(args: Any) -> None:
+    with cast(
+        cy_serial_bridge.driver.CyMfgrIface,
+        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+    ) as dev:
         # Load bytes and check checksum
         config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(args.file)
 
@@ -37,20 +44,23 @@ def do_load(args):
         dev.connect()
 
         log.info("Writing configuration...")
-        dev.write_config(config_block.config_bytes)
+        dev.write_config(config_block)
         dev.disconnect()
 
         log.info("Done!")
 
 
-def do_decode(args):
+def do_decode(args: Any) -> None:
     # Just decode the configuration block, then exit.
     cfg_block = cy_serial_bridge.configuration_block.ConfigurationBlock(args.file)
     print(str(cfg_block))
 
 
-def do_reconfigure(args):
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE) as dev:
+def do_reconfigure(args: Any) -> None:
+    with cast(
+        cy_serial_bridge.driver.CyMfgrIface,
+        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+    ) as dev:
         dev.connect()
 
         try:
@@ -90,20 +100,24 @@ def do_reconfigure(args):
             raise
 
 
-def do_change_type(args):
+def do_change_type(args: Any) -> None:
     # Convert type
     # Note: There is also a "JTAG" device class which can be set, but I'm unsure if this is actually
     # a valid setting as it doesn't appear in the config tool UI.
     cy_type = cy_serial_bridge.CyType[args.type]
 
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE) as dev:
+    dev: cy_serial_bridge.driver.CyMfgrIface
+    with cast(
+        cy_serial_bridge.driver.CyMfgrIface,
+        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+    ) as dev:
         dev.change_type(cy_type)
 
         # Reset the device so that the new configuration loads
         dev.reset_device()
 
 
-def do_scan(args):
+def do_scan(args: Any) -> None:
     """
     Scan for candidate USB devices on the system
     """
@@ -136,7 +150,7 @@ def do_scan(args):
                 )
 
 
-def main():
+def main() -> None:
     ap = ArgumentParser()
     ap.add_argument(
         "-V", "--vid", type=to_int, default=DEFAULT_VID, help=f"VID of device to connect (default 0x{DEFAULT_VID:04x})"

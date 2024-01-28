@@ -3,7 +3,9 @@ from __future__ import annotations
 import dataclasses
 import sys
 import time
+import typing
 from enum import Enum
+from typing import AbstractSet, Union
 
 import usb1
 
@@ -48,7 +50,7 @@ class DeviceListEntry:
 
 
 def list_devices(
-    vid_pids: set[tuple[int, int]] | None = frozenset(((DEFAULT_VID, DEFAULT_PID),)),
+    vid_pids: AbstractSet[tuple[int, int]] | None = frozenset(((DEFAULT_VID, DEFAULT_PID),)),
 ) -> list[DeviceListEntry]:
     """
     Scan for USB devices which look like they could be CY6C652xx chips based on their USB descriptor layout.
@@ -59,9 +61,8 @@ def list_devices(
     """
     device_list: list[DeviceListEntry] = []
 
+    dev: usb1.USBDevice
     for dev in usb_context.getDeviceIterator(skip_on_error=True):
-        dev: usb1.USBDevice
-
         if vid_pids is not None and (dev.getVendorID(), dev.getProductID()) not in vid_pids:
             # Not a VID-PID we're looking for
             continue
@@ -148,7 +149,7 @@ class OpenMode(Enum):
 CHANGE_TYPE_TIMEOUT = 5.0  # s
 
 
-def _scan_for_device(vid: int, pid: int, serial_number: str | None):
+def _scan_for_device(vid: int, pid: int, serial_number: str | None) -> DeviceListEntry:
     """
     Helper function for open_scb_device().
     """
@@ -186,21 +187,26 @@ def _scan_for_device(vid: int, pid: int, serial_number: str | None):
                 device_to_open = device
                 break
 
-        if device_to_open is None and any_unopenable_devices:
-            message = (
-                f"Did not find an exact match for serial number.  However, at least one candidate device with "
-                f"VID:PID {vid:04x}:{pid:04x} was found that could not be opened!"
-            )
-            if sys.platform == "win32":
-                message += "  This is likely because it does not have the WinUSB driver attached."
-            raise CySerialBridgeError(message)
+        if device_to_open is None:
+            if any_unopenable_devices:
+                message = (
+                    f"Did not find an exact match for serial number.  However, at least one candidate device with "
+                    f"VID:PID {vid:04x}:{pid:04x} was found that could not be opened!"
+                )
+                if sys.platform == "win32":
+                    message += "  This is likely because it does not have the WinUSB driver attached."
+                raise CySerialBridgeError(message)
+            else:
+                message = f"Multiple devices found with VID:PID {vid:04x}:{pid:04x} but none matched the specified serial number!"
+                raise CySerialBridgeError(message)
 
     return device_to_open
 
 
-def open_device(
-    vid: int, pid: int, open_mode: OpenMode, serial_number: str | None = None
-) -> driver.CySPIControllerBridge | driver.CyI2CControllerBridge | driver.CyMfgrIface:
+AnyDriverClass = Union[driver.CySPIControllerBridge, driver.CyI2CControllerBridge, driver.CyMfgrIface]
+
+
+def open_device(vid: int, pid: int, open_mode: OpenMode, serial_number: str | None = None) -> AnyDriverClass:
     """
     Convenience function for opening a CY7C652xx SCB device in a desired mode.
 
@@ -258,4 +264,4 @@ def open_device(
         log.info(f"Changed type of device in {time.time() - change_type_start_time:.04f} sec")
 
     # Step 3: Instantiate the driver!
-    return driver_class(device_to_open.usb_device)
+    return typing.cast(AnyDriverClass, driver_class(device_to_open.usb_device))
