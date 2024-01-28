@@ -4,29 +4,9 @@ import random
 import sys
 from argparse import ArgumentParser
 
-import usb1
-
 import cy_serial_bridge
 from cy_serial_bridge.usb_constants import DEFAULT_PID, DEFAULT_VID
 from cy_serial_bridge.utils import log
-
-
-def find_device(args) -> usb1.USBDevice:
-    found = list(cy_serial_bridge.driver.find_device(args.vid, args.pid))
-
-    if len(found) - 1 < args.nth:
-        message = "No USB device found"
-        raise RuntimeError(message)
-
-    # ux == USB Device/Configuration/Interface/Setting/Endpoint
-    ud = found[args.nth]
-    # uc = ud[0]
-    # ui = uc[0]
-    # us = ui[0]
-    # ue = us[0]
-
-    log.info("Connecting...")
-    return ud
 
 
 def to_int(v):
@@ -34,7 +14,7 @@ def to_int(v):
 
 
 def do_save(args):
-    with cy_serial_bridge.driver.CyMfgrIface(find_device(args), scb_index=args.scb) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE) as dev:
         dev.connect()
         buf = dev.read_config()
         dev.disconnect()
@@ -48,7 +28,7 @@ def do_save(args):
 
 
 def do_load(args):
-    with cy_serial_bridge.driver.CyMfgrIface(find_device(args), scb_index=args.scb) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE) as dev:
         # Load bytes and check checksum
         config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(args.file)
 
@@ -70,7 +50,7 @@ def do_decode(args):
 
 
 def do_reconfigure(args):
-    with cy_serial_bridge.driver.CyMfgrIface(find_device(args), scb_index=args.scb) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE) as dev:
         dev.connect()
 
         try:
@@ -116,30 +96,8 @@ def do_change_type(args):
     # a valid setting as it doesn't appear in the config tool UI.
     cy_type = cy_serial_bridge.CyType[args.type]
 
-    with cy_serial_bridge.driver.CyMfgrIface(find_device(args), scb_index=args.scb) as dev:
-        dev.connect()
-
-        try:
-            buffer = dev.read_config()
-
-            config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(block_bytes=buffer)
-            log.info("Read the following configuration from the device: %s", str(config_block))
-
-            # Change the type
-            config_block.device_type = cy_type
-
-            log.info("Writing the following configuration to the device: %s", str(config_block))
-
-            log.info("Writing configuration...")
-            dev.write_config(config_block)
-
-            dev.disconnect()
-
-            log.info("Done!")
-
-        except Exception:
-            dev.disconnect()
-            raise
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE) as dev:
+        dev.change_type(cy_type)
 
         # Reset the device so that the new configuration loads
         dev.reset_device()

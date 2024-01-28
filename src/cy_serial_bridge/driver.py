@@ -6,15 +6,13 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from math import ceil
-from typing import TYPE_CHECKING, Iterator, Tuple, cast
+from typing import Iterator, Tuple, cast
 
 import usb1  # from 'libusb1' package
 
-if TYPE_CHECKING:
-    from cy_serial_bridge.configuration_block import ConfigurationBlock
-
+from cy_serial_bridge.configuration_block import ConfigurationBlock
 from cy_serial_bridge.usb_constants import *
-from cy_serial_bridge.utils import ByteSequence, log
+from cy_serial_bridge.utils import ByteSequence, CySerialBridgeError, log
 
 """
 Module containing the logic for communicating with the CY7C652xx USB device.
@@ -26,11 +24,6 @@ modules.
 # For now, just use one global context.  This might have to be changed later but seems OK for initial development.
 usb_context = usb1.USBContext()
 usb_context.open()
-
-
-# Exception class for the driver library
-class CySerialBridgeError(Exception):
-    pass
 
 
 # Exceptions for recoverable I2C errors
@@ -449,6 +442,36 @@ class CyMfgrIface(CySerBridgeBase):
         w_buffer = config.config_bytes
 
         return self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout)
+
+    def change_type(self, new_type: CyType):
+        """
+        Convenience function for changing the CyType of the device.
+
+        Note: After calling this function, the new CyType will not take effect until
+        you reset the device
+        """
+        self.connect()
+
+        try:
+            buffer = self.read_config()
+
+            config_block = ConfigurationBlock(block_bytes=buffer)
+            log.info("Read the following configuration from the device: %s", str(config_block))
+
+            # Change the type
+            config_block.device_type = new_type
+
+            log.info("Writing the following configuration to the device: %s", str(config_block))
+
+            self.write_config(config_block)
+
+            self.disconnect()
+
+            log.info("Type has been changed.")
+
+        except Exception:
+            self.disconnect()
+            raise
 
 
 @dataclass

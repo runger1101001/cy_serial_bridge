@@ -92,7 +92,7 @@ select = [
     # 'ANN',  # Annotations - disabled for now because mypy checks these already and is a bit less pedantic
     'ARG',  # Unused arguments
     'B',    # Bugbear
-    'BLE',  # Blind except
+    # 'BLE',  # Blind except - disabled because sometimes you *don't* know what exceptions something will generate
     'C4',   # Comprehensions
     'C90',  # mccabe
     'COM',  # Commas

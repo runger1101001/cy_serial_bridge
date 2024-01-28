@@ -4,15 +4,15 @@ import random
 import time
 
 import pytest
-import usb1
 
 import cy_serial_bridge
+from cy_serial_bridge import DEFAULT_PID, DEFAULT_VID, OpenMode
 
 """
 Test suite for the CY7C652xx driver.
 This test suite _requires access to hardware_ and MUST BE run on a machine
 with a matching device plugged into it.  Additionally, at certain points in the test, jumper
-changes are required, so you will be prompted to make changes
+changes are required, so you will be prompted to make changes.
 """
 
 PROJECT_ROOT_DIR = pathlib.Path(__file__).parent.parent
@@ -20,16 +20,6 @@ PROJECT_ROOT_DIR = pathlib.Path(__file__).parent.parent
 # Eval kit has a 24LC128 EEPROM with A[2..0] = 001
 EEPROM_I2C_ADDRESS = 0x51
 EEPROM_PAGE_SIZE = 64
-
-
-@pytest.fixture()
-def serial_bridge() -> usb1.USBDevice:
-    """
-    Fixture which finds a serial bridge USB device
-    """
-    found = list(cy_serial_bridge.driver.find_device())
-    assert len(found) >= 1
-    return found[0]
 
 
 def test_cfg_block_generation():
@@ -77,7 +67,7 @@ def test_cfg_block_generation():
     assert config_block.serial_number is None
 
 
-def test_user_flash(serial_bridge: usb1.USBDevice):
+def test_user_flash():
     """
     Test ability to use the user flash programming functionality of the device
     """
@@ -87,7 +77,7 @@ def test_user_flash(serial_bridge: usb1.USBDevice):
 
     # Note: the mode that we open the device in doesn't really matter, it can be anything
     # for this test
-    with cy_serial_bridge.driver.CyMfgrIface(serial_bridge) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE) as dev:
         # Create a random 8-digit number which will be used in the test.
         # This ensures the flash is actually getting programmed and we aren't just reusing old data.
         random_number = random.randint(0, 10**8 - 1)
@@ -126,91 +116,122 @@ def test_user_flash(serial_bridge: usb1.USBDevice):
         assert page_3_mem == page_3_bytes
 
 
-# def test_i2c_config_set_get(serial_bridge: usb1.USBDevice):
-#     """
-#     Test that we can get and set the I2C controller mode config for the USB device
-#     """
-#
-#     print("Please connect jumpers on the eval kit:")
-#     print("J17 = 2-3")
-#     print("J20 = 2-3")
-#     input("Press [ENTER] when done...")
-#
-#     with cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
-#         print("Setting speed to 400kHz...")
-#         max_speed_config = cy_serial_bridge.driver.CyI2CConfig(400000)
-#         dev.set_i2c_configuration(max_speed_config)
-#
-#         curr_config = dev.read_i2c_configuration()
-#         print("Read back: " + str(curr_config))
-#         assert curr_config == max_speed_config
-#
-#         print("Setting speed to 50kHz...")
-#         low_speed_config = cy_serial_bridge.driver.CyI2CConfig(50000)
-#         dev.set_i2c_configuration(low_speed_config)
-#
-#         curr_config = dev.read_i2c_configuration()
-#         print("Read back: " + str(curr_config))
-#         assert curr_config == low_speed_config
+def test_open_by_serial_number():
+    """
+    Test that open_device() uses the serial number filter correctly
+    """
+    # For this test to work there should be exactly 1 device connected
+    available_devices = cy_serial_bridge.list_devices()
+    assert len(available_devices) == 1
 
-#
-# def test_i2c_read_write(serial_bridge: usb1.USBDevice):
-#     """
-#     Test sending I2C read and write transactions
-#     """
-#     with cy_serial_bridge.driver.CyI2CControllerBridge(serial_bridge) as dev:
-#         dev.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(400000))
-#
-#         # Basic read/write operations
-#         # ---------------------------------------------------------------------------
-#
-#         # Try a 1 byte read from the EEPROM address to make sure it ACKs
-#         dev.i2c_read(EEPROM_I2C_ADDRESS, 1)
-#
-#         # Try a 1 byte read from an incorrect address to make sure it does not ACK
-#         with pytest.raises(cy_serial_bridge.I2CNACKError) as raises:
-#             dev.i2c_read(EEPROM_I2C_ADDRESS + 0x10, 1)
-#         assert raises.value.bytes_written == 0
-#
-#         # Try a short write to the EEPROM address to make sure it ACKs
-#         dev.i2c_write(EEPROM_I2C_ADDRESS, b"\x00\x00")
-#
-#         # Try an addr-only write to an incorrect address to make sure it does not ACK
-#         with pytest.raises(cy_serial_bridge.I2CNACKError) as raises:
-#             dev.i2c_write(EEPROM_I2C_ADDRESS + 0x10, b"\x00\x00")
-#
-#         # TODO this seems to be not working
-#         # assert raises.value.bytes_written == 0
-#
-#         # Write something to the EEPROM and then read it back
-#         # ---------------------------------------------------------------------------
-#
-#         # Create a random 8-digit number which will be used in the test.
-#         # This ensures the flash is actually getting programmed and we aren't just reusing old data.
-#         random_number = random.randint(0, 10**8 - 1)
-#         eeprom_message = f"Hello from EEPROM! Number is {random_number:08}".encode()
-#         assert len(eeprom_message) <= EEPROM_PAGE_SIZE
-#
-#         eeprom_address = 0x0100  # Must be 64 byte aligned
-#
-#         write_command = bytes([(eeprom_address >> 8) & 0xFF, eeprom_address & 0xFF, *eeprom_message])
-#         print("Writing: " + repr(write_command))
-#         dev.i2c_write(EEPROM_I2C_ADDRESS, write_command)
-#
-#         time.sleep(0.01)  # EEPROM needs at least 5ms page program time before it can respond again
-#
-#         # Reset address pointer
-#         dev.i2c_write(EEPROM_I2C_ADDRESS, bytes([(eeprom_address >> 8) & 0xFF, eeprom_address & 0xFF]))
-#
-#         # Read data back
-#         read_data = dev.i2c_read(EEPROM_I2C_ADDRESS, len(eeprom_message))
-#
-#         print("Got back: " + repr(read_data))
-#
-#         assert read_data == eeprom_message
+    # If passing a junk serial number we should get no device
+    with pytest.raises(cy_serial_bridge.CySerialBridgeError, match="does not have a matching serial number"):
+        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE, serial_number="1234")
+
+    # Opening the real detected serial number should work
+    with cy_serial_bridge.open_device(
+        DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE, serial_number=available_devices[0].serial_number
+    ):
+        pass
 
 
-def test_spi_config_read_write(serial_bridge: usb1.USBDevice):
+def test_auto_change_type():
+    """
+    Test that open_device() can automatically change the device's type
+    """
+    # Opening as SPI -> change type to SPI
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER):
+        pass
+
+    # Opening as I2C -> change type to I2C
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER):
+        pass
+
+
+def test_i2c_config_set_get():
+    """
+    Test that we can get and set the I2C controller mode config for the USB device
+    """
+    print("Please connect jumpers on the eval kit:")
+    print("J17 = 2-3")
+    print("J20 = 2-3")
+    input("Press [ENTER] when done...")
+
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER) as dev:
+        print("Setting speed to 400kHz...")
+        max_speed_config = cy_serial_bridge.driver.CyI2CConfig(400000)
+        dev.set_i2c_configuration(max_speed_config)
+
+        curr_config = dev.read_i2c_configuration()
+        print("Read back: " + str(curr_config))
+        assert curr_config == max_speed_config
+
+        print("Setting speed to 50kHz...")
+        low_speed_config = cy_serial_bridge.driver.CyI2CConfig(50000)
+        dev.set_i2c_configuration(low_speed_config)
+
+        curr_config = dev.read_i2c_configuration()
+        print("Read back: " + str(curr_config))
+        assert curr_config == low_speed_config
+
+
+def test_i2c_read_write():
+    """
+    Test sending I2C read and write transactions
+    """
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER) as dev:
+        dev.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(400000))
+
+        # Basic read/write operations
+        # ---------------------------------------------------------------------------
+
+        # Try a 1 byte read from the EEPROM address to make sure it ACKs
+        dev.i2c_read(EEPROM_I2C_ADDRESS, 1)
+
+        # Try a 1 byte read from an incorrect address to make sure it does not ACK
+        with pytest.raises(cy_serial_bridge.I2CNACKError) as raises:
+            dev.i2c_read(EEPROM_I2C_ADDRESS + 0x10, 1)
+        assert raises.value.bytes_written == 0
+
+        # Try a short write to the EEPROM address to make sure it ACKs
+        dev.i2c_write(EEPROM_I2C_ADDRESS, b"\x00\x00")
+
+        # Try an addr-only write to an incorrect address to make sure it does not ACK
+        with pytest.raises(cy_serial_bridge.I2CNACKError) as raises:
+            dev.i2c_write(EEPROM_I2C_ADDRESS + 0x10, b"\x00\x00")
+
+        # TODO this seems to be not working
+        # assert raises.value.bytes_written == 0
+
+        # Write something to the EEPROM and then read it back
+        # ---------------------------------------------------------------------------
+
+        # Create a random 8-digit number which will be used in the test.
+        # This ensures the flash is actually getting programmed and we aren't just reusing old data.
+        random_number = random.randint(0, 10**8 - 1)
+        eeprom_message = f"Hello from EEPROM! Number is {random_number:08}".encode()
+        assert len(eeprom_message) <= EEPROM_PAGE_SIZE
+
+        eeprom_address = 0x0100  # Must be 64 byte aligned
+
+        write_command = bytes([(eeprom_address >> 8) & 0xFF, eeprom_address & 0xFF, *eeprom_message])
+        print("Writing: " + repr(write_command))
+        dev.i2c_write(EEPROM_I2C_ADDRESS, write_command)
+
+        time.sleep(0.01)  # EEPROM needs at least 5ms page program time before it can respond again
+
+        # Reset address pointer
+        dev.i2c_write(EEPROM_I2C_ADDRESS, bytes([(eeprom_address >> 8) & 0xFF, eeprom_address & 0xFF]))
+
+        # Read data back
+        read_data = dev.i2c_read(EEPROM_I2C_ADDRESS, len(eeprom_message))
+
+        print("Got back: " + repr(read_data))
+
+        assert read_data == eeprom_message
+
+
+def test_spi_config_read_write():
     """
     Test that we can read and write SPI configs from the device
     """
@@ -221,7 +242,7 @@ def test_spi_config_read_write(serial_bridge: usb1.USBDevice):
     print("J20 = 2-5 [MOSI]")
     input("Press [ENTER] when done...")
 
-    with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER) as dev:
         config_1 = cy_serial_bridge.CySPIConfig(
             frequency=20000,
             word_size=16,
@@ -318,11 +339,11 @@ class M95M02Driver:
         return self._dev.spi_transfer(tx_bytes)[4:]
 
 
-def test_spi_transactions(serial_bridge: usb1.USBDevice):
+def test_spi_read_write():
     """
-    Test doing an SPI transaction with the CY7C652xx to the EEPROM on the dev board
+    Test using the CY7C652xx to read and write the EEPROM on the dev board
     """
-    with cy_serial_bridge.CySPIControllerBridge(serial_bridge) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER) as dev:
         eeprom_driver = M95M02Driver(dev)
 
         random_number = random.randint(0, 10**8 - 1)

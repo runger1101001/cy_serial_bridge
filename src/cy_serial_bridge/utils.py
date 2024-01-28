@@ -14,3 +14,8 @@ else:
 
 # Logger for the package
 log = logging.getLogger("cy_serial_bridge")
+
+
+# Base exception for the package
+class CySerialBridgeError(Exception):
+    pass

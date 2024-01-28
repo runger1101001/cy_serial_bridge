@@ -20,6 +20,7 @@ This driver is being worked on with the goal of, in addition to providing a tran
 ### You should *not* use this driver if you want to
 - Ship an easy solution that works with no additional user setup on Windows machines
 - Just use the serial bridge chip as a plug-and-play COM port (just use USCU to configure it in that case!)
+- Rapidly switch between I2C/SPI/UART modes (it takes almost half a second to reprogram the config block and re-enumerate the device)
 
 ## Warnings
 
@@ -39,15 +40,17 @@ Additionally, I assume that it would be possible to brick your CY7C652xx by load
 - SPI peripheral/slave mode operation
 - CapSense
 - GPIO
+- Scanning & discovering dual channel CY7C652xx devices (e.g. CY7C65215)
 
 ## Using the Command-Line Interface
 
 This driver installs a command-line interface script, `cy_serial_bridge_cli`.  It supports a number of functions:
 ```
-usage: cy_serial_bridge_cli [-h] [-V VID] [-P PID] [-n NTH] [-s SCB] [-v] {save,load,decode,type,reconfigure} ...
+usage: cy_serial_bridge_cli [-h] [-V VID] [-P PID] [-n NTH] [-s SCB] [-v] {scan,save,load,decode,type,reconfigure} ...
 
 positional arguments:
-  {save,load,decode,type,reconfigure}
+  {scan,save,load,decode,type,reconfigure}
+    scan                Scan for USB devices which look like CY7C652xx serial bridges
     save                Save configuration block from connected device to bin file
     load                Load configuration block to connected device from bin file
     decode              Decode and display basic information from configuration block bin file
@@ -57,10 +60,11 @@ positional arguments:
 options:
   -h, --help            show this help message and exit
   -V VID, --vid VID     VID of device to connect (default 0x04b4)
-  -P PID, --pid PID     PID of device to connect (default 0x04b4)
+  -P PID, --pid PID     PID of device to connect (default 0xe010)
   -n NTH, --nth NTH     Select Nth device (default 0)
   -s SCB, --scb SCB     Select Nth SCB block (default 0). Used for dual channel chips only.
   -v, --verbose         Enable verbose logging
+
 ```
 
 In particular, the `reconfigure` option can be used to edit settings of a connected device, then write those settings back.  The options you pass tell it what to reconfigure:
@@ -105,7 +109,7 @@ Note, however, that the rules file is written for the driver default VID and PID
 ## Setting Up New Devices
 When new CY76C65211 devices arrive, and you use USCU to configure them, they will get the Cypress VID (0x4b4), and can end up with one of several PID values (e.g. 0x0003, 0x0004, etc) depending on what model of chip they are and what mode they are configured as (I2C, SPI, etc).  
 
-However, when using the chips with this driver, we generally want them to have a consistent VID & PID, so that the driver can reliably find them.  Additionally, using the default VID & PID causes major problems on Windows because Windows "knows" that Cypress's CYUSB3 driver is the best driver for this chip, so it will replace the WinUSB driver installed by Zadig with CYUSB3 each time the chip is re-plugged in.  
+However, when using the chips with this driver, we generally want them to have a consistent VID & PID so that the driver can reliably find them.  Additionally, using the default VID & PID causes major problems on Windows because Windows "knows" that Cypress's CYUSB3 driver is the best driver for this chip, so it will replace the WinUSB driver installed by Zadig with CYUSB3 each time the chip is re-plugged in.  
 
 To get around these issues, I'm adopting the convention that we'll assign CY7C65xx devices the regular Cypress VID, but use an arbitrary new VID of 0xE010.  You can set this configuration on a new device with a command like:
 ```shell
@@ -113,6 +117,17 @@ cy_serial_bridge_cli --vid 0x04b4 --pid <pid of your device> reconfigure --set-p
 ```
 (note that this has to be run from a `poetry shell` if developing locally)
 
+To determine what the VID and PID of your device currently are, you can use:
+```shell
+cy_serial_bridge_cli scan --all
+```
+This will do a heuristic search of all the USB devices on your machine to find ones which "look like" CY7C652xx chips based on their descriptor layout.  Note that currently this will not find devices set to "virtual COM port" mode in USCU, they have to be set to vendor mode.
+
 Also note that adding `--randomize-serno` to that command will assign a random serial number to the chip, which is helpful for provisioning new boards.
 
 Be careful with this, though.  If you plan to use this driver in a real product, this strategy will not be usable, as we are basically "squatting" on Cypress's VID space without paying.  You will have to sort out a VID and PID value for yourself I'm afraid.
+
+## To Do List / Known Issues
+- If the I2C lines are not pulled up to 3.3V, I2C read and write bulk transfers hang forever and we don't have error handling for this
+- Need to understand the formatting of the data argument for SPI when frame size is not 8 bits
+- I2CNACKError.bytes_written is not correct
