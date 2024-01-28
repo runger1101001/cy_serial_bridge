@@ -144,6 +144,14 @@ def do_change_type(args):
         dev.reset_device()
 
 
+def do_scan(args):
+    """
+    Scan for candidate USB devices on the system
+    """
+    scan_filter = None if args.all else {(args.vid, args.pid)}
+    cy_serial_bridge.device_discovery.list_devices(scan_filter)
+
+
 def main():
     ap = ArgumentParser()
     ap.add_argument(
@@ -160,6 +168,14 @@ def main():
 
     subparser = ap.add_subparsers()
     subparser.required = True  # Make sure argparse shows an error if no command is provided
+
+    scan_ap = subparser.add_parser("scan", help="Scan for USB devices which look like CY7C652xx serial bridges")
+    scan_ap.add_argument(
+        "--all",
+        action="store_true",
+        help="Scan all USB devices on the system instead of just ones with the specified vid and pid",
+    )
+    scan_ap.set_defaults(func=do_scan)
 
     save_ap = subparser.add_parser("save", help="Save configuration block from connected device to bin file")
     save_ap.add_argument("file", type=str, help="Bin file to save configuration into.")
