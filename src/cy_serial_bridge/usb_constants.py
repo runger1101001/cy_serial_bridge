@@ -27,13 +27,14 @@ USER_FLASH_SIZE = 512
 
 DEFAULT_VID = 0x04B4
 DEFAULT_PID = 0xE010
+DEFAULT_VIDS_PIDS = frozenset(((DEFAULT_VID, DEFAULT_PID),))
 
 
-class CyClass(IntEnum):
+class USBClass(IntEnum):
     DISABLED = 0x00  # None or the interface is disabled
     CDC = 0x02  # CDC ACM class
     PHDC = 0x0F  # PHDC class
-    VENDOR = 0xFF  #
+    VENDOR = 0xFF  # Custom / vendor defined USB device
 
 
 class CyType(IntEnum):

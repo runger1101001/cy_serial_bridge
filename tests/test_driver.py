@@ -41,8 +41,8 @@ def test_cfg_block_generation():
     assert not config_block.capsense_on
 
     # Make sure that we can modify the attributes which support being changed
-    config_block.device_type = cy_serial_bridge.CyType.UART
-    assert config_block.device_type == cy_serial_bridge.CyType.UART
+    config_block.device_type = cy_serial_bridge.CyType.UART_CDC
+    assert config_block.device_type == cy_serial_bridge.CyType.UART_CDC
 
     config_block.vid = 0x1234
     config_block.pid = 0x5678
@@ -77,7 +77,7 @@ def test_user_flash():
 
     # Note: the mode that we open the device in doesn't really matter, it can be anything
     # for this test
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE) as dev:
         # Create a random 8-digit number which will be used in the test.
         # This ensures the flash is actually getting programmed and we aren't just reusing old data.
         random_number = random.randint(0, 10**8 - 1)
@@ -126,11 +126,11 @@ def test_open_by_serial_number():
 
     # If passing a junk serial number we should get no device
     with pytest.raises(cy_serial_bridge.CySerialBridgeError, match="does not have a matching serial number"):
-        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE, serial_number="1234")
+        cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE, serial_number="1234")
 
     # Opening the real detected serial number should work
     with cy_serial_bridge.open_device(
-        DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE, serial_number=available_devices[0].serial_number
+        DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE, serial_number=available_devices[0].serial_number
     ):
         pass
 
@@ -140,11 +140,15 @@ def test_auto_change_type():
     Test that open_device() can automatically change the device's type
     """
     # Opening as SPI -> change type to SPI
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER):
+    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.SPI_CONTROLLER):
         pass
 
     # Opening as I2C -> change type to I2C
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER):
+    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.I2C_CONTROLLER):
+        pass
+
+    # Opening as UART -> change type to UART
+    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.UART_CDC):
         pass
 
 
@@ -157,7 +161,7 @@ def test_i2c_config_set_get():
     print("J20 = 2-3")
     input("Press [ENTER] when done...")
 
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.I2C_CONTROLLER) as dev:
         print("Setting speed to 400kHz...")
         max_speed_config = cy_serial_bridge.driver.CyI2CConfig(400000)
         dev.set_i2c_configuration(max_speed_config)
@@ -179,7 +183,7 @@ def test_i2c_read_write():
     """
     Test sending I2C read and write transactions
     """
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.I2C_CONTROLLER) as dev:
         dev.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(400000))
 
         # Basic read/write operations
@@ -242,7 +246,7 @@ def test_spi_config_read_write():
     print("J20 = 2-5 [MOSI]")
     input("Press [ENTER] when done...")
 
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.SPI_CONTROLLER) as dev:
         config_1 = cy_serial_bridge.CySPIConfig(
             frequency=20000,
             word_size=16,
@@ -343,7 +347,7 @@ def test_spi_read_write():
     """
     Test using the CY7C652xx to read and write the EEPROM on the dev board
     """
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.SPI_CONTROLLER) as dev:
         eeprom_driver = M95M02Driver(dev)
 
         random_number = random.randint(0, 10**8 - 1)

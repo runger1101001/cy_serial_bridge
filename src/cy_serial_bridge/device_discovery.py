@@ -5,13 +5,18 @@ import sys
 import time
 import typing
 from enum import Enum
-from typing import AbstractSet, Union
+from typing import TYPE_CHECKING, AbstractSet, Union, cast
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+import serial
 import usb1
+from serial.tools import list_ports, list_ports_common
 
 from cy_serial_bridge import driver
 from cy_serial_bridge.driver import usb_context
-from cy_serial_bridge.usb_constants import DEFAULT_PID, DEFAULT_VID, CyType
+from cy_serial_bridge.usb_constants import DEFAULT_VIDS_PIDS, CyType, USBClass
 from cy_serial_bridge.utils import CySerialBridgeError, log
 
 
@@ -48,9 +53,27 @@ class DeviceListEntry:
     # Serial number string
     serial_number: str | None = None
 
+    # Name of this device's serial port, e.g. COM3 or /dev/ttyACM0
+    # Only populated for UART CDC devices that we were able to open.
+    serial_port_name: str | None = None
+
+
+def _find_serial_port_name_for_serno(serial_number: str) -> str | None:
+    """
+    Find the serial port name for a device with the given serial number.
+
+    Uses pyserial to do the hard work. If no device is found, returns None
+    """
+    serial_port_generator: Generator[list_ports_common.ListPortInfo, None, None] = list_ports.comports()
+    for serial_port in serial_port_generator:
+        if serial_port.serial_number == serial_number:
+            return cast(str, serial_port.device)
+
+    return None
+
 
 def list_devices(
-    vid_pids: AbstractSet[tuple[int, int]] | None = frozenset(((DEFAULT_VID, DEFAULT_PID),)),
+    vid_pids: AbstractSet[tuple[int, int]] | None = DEFAULT_VIDS_PIDS,
 ) -> list[DeviceListEntry]:
     """
     Scan for USB devices which look like they could be CY6C652xx chips based on their USB descriptor layout.
@@ -58,12 +81,22 @@ def list_devices(
     If a vid and pid set is given, only devices with the specified vid and pid will be considered.
     If the vid and pid set is left at the default, only the driver default vid and pid will be used.
     If the vid and pid set is set to None, all devices which *could* be CY6C652xx chips are returned.
+
+    Note: For each PID value, both the even value (pid & 0xFFFE) and the odd value ((pid & 0xFFFE) + 1)
+    will be considered.  This is to support UART CDC mode (see the README)
     """
     device_list: list[DeviceListEntry] = []
 
+    # TODO temporary, doesn't work on Windows without this but this does not work if there is a 2nd device open
+    # usb_context.close()
+    # usb_context.open()
+
     dev: usb1.USBDevice
     for dev in usb_context.getDeviceIterator(skip_on_error=True):
-        if vid_pids is not None and (dev.getVendorID(), dev.getProductID()) not in vid_pids:
+        even_vid_pid = (dev.getVendorID(), dev.getProductID() & 0xFFFE)
+        odd_vid_pid = (dev.getVendorID(), (dev.getProductID() & 0xFFFE) + 1)
+
+        if vid_pids is not None and even_vid_pid not in vid_pids and odd_vid_pid not in vid_pids:
             # Not a VID-PID we're looking for
             continue
 
@@ -79,7 +112,7 @@ def list_devices(
 
         mfg_interface_settings: usb1.USBInterfaceSetting
 
-        if cfg.getNumInterfaces() == 3 and cfg[0][0].getClass() == 0x2:
+        if cfg.getNumInterfaces() == 3 and cfg[0][0].getClass() == USBClass.CDC:
             # USB CDC mode
             usb_cdc_interface_settings: usb1.USBInterfaceSetting = cfg[0][0]
             cdc_data_interface_settings: usb1.USBInterfaceSetting = cfg[1][0]
@@ -102,7 +135,7 @@ def list_devices(
 
             # Check SCB interface -- the Class should be 0xFF (vendor defined/no rules)
             # and the SubClass value gives the CyType
-            if scb_interface_settings.getClass() != 0xFF:
+            if scb_interface_settings.getClass() != USBClass.VENDOR:
                 continue
             if scb_interface_settings.getSubClass() not in {
                 CyType.UART_VENDOR.value,
@@ -152,6 +185,11 @@ def list_devices(
         except usb1.USBError:
             list_entry.open_failed = True
 
+        # Iff this is a CDC serial device, find its associated COM port.
+        # Luckily, pyserial does the hard work of talking to the OS for us here.
+        if curr_cytype == CyType.UART_CDC and not list_entry.open_failed:
+            list_entry.serial_port_name = _find_serial_port_name_for_serno(cast(str, list_entry.serial_number))
+
         device_list.append(list_entry)
 
     return device_list
@@ -170,27 +208,36 @@ class OpenMode(Enum):
     SPI_CONTROLLER = (CyType.SPI, driver.CySPIControllerBridge)
     MFGR_INTERFACE = (None, driver.CyMfgrIface)
 
+    # Note: Unlike the other open modes, UART_CDC directly returns a pyserial Serial object
+    # instead of a driver from this class
+    UART_CDC = (CyType.UART_CDC, serial.Serial)
+
 
 # Time we allow for the device to change its type and be enumerated on the USB bus:
-# On Windows, this nominally takes about 400 ms, and on a Linux SBC, I measured it at up to 800 ms
-CHANGE_TYPE_TIMEOUT = 5.0  # s
+# It can take quite some time for the OS to re-enumerate the serial port
+CHANGE_TYPE_TIMEOUT = 10.0  # s
 
 
-def _scan_for_device(vid: int, pid: int, serial_number: str | None) -> DeviceListEntry:
+def _scan_for_device(open_mode: OpenMode, vid: int, pids: set[int], serial_number: str | None) -> DeviceListEntry:
     """
     Helper function for open_scb_device().
+
+    Lists all devices on the system, and then tries to find a match for the given vid, pid, and serial number.
+    If no match is found, throws an exception containing the reason.
     """
-    devices = list_devices({(vid, pid)})
+    devices = list_devices({(vid, pid) for pid in pids})
+
+    # print("Scan results:" + str(devices))
 
     if len(devices) == 0:
-        message = f"No devices found with VID:PID {vid:04x}:{pid:04x}"
+        message = "No devices found"
         raise CySerialBridgeError(message)
     elif len(devices) == 1:
         # Exactly 1 device found
         device_to_open = devices[0]
 
         if device_to_open.open_failed:
-            message = f"Found device with VID:PID {vid:04x}:{pid:04x} but cannot open it!"
+            message = f"Found device with VID:PID {vid:04x}:{device_to_open.pid:04x} but cannot open it!"
             if sys.platform == "win32":
                 message += "  This is likely because it does not have the WinUSB driver attached."
             raise CySerialBridgeError(message)
@@ -202,7 +249,7 @@ def _scan_for_device(vid: int, pid: int, serial_number: str | None) -> DeviceLis
     else:  # Multiple devices
         # Search by serial number
         if serial_number is None:
-            message = f"Multiple devices found with VID:PID {vid:04x}:{pid:04x} but no serial number provided!"
+            message = "Multiple devices found but no serial number provided!"
             raise CySerialBridgeError(message)
 
         any_unopenable_devices = False
@@ -216,29 +263,42 @@ def _scan_for_device(vid: int, pid: int, serial_number: str | None) -> DeviceLis
 
         if device_to_open is None:
             if any_unopenable_devices:
-                message = (
-                    f"Did not find an exact match for serial number.  However, at least one candidate device with "
-                    f"VID:PID {vid:04x}:{pid:04x} was found that could not be opened!"
-                )
+                message = "Did not find an exact match for serial number.  However, at least one candidate device with was found that could not be opened!"
                 if sys.platform == "win32":
                     message += "  This is likely because it does not have the WinUSB driver attached."
                 raise CySerialBridgeError(message)
             else:
-                message = f"Multiple devices found with VID:PID {vid:04x}:{pid:04x} but none matched the specified serial number!"
+                message = "Multiple devices found but none matched the specified serial number!"
                 raise CySerialBridgeError(message)
 
-    return device_to_open  # type: ignore[return-value]
+    # mypy isn't smart enough to understand that device_to_open cannot be None at this point
+    # so we have to help it out.
+    device_to_open = cast(DeviceListEntry, device_to_open)
+
+    # If opening in UART CDC mode, we have to be able to detect the serial port in order to open the device
+    if (
+        open_mode == OpenMode.UART_CDC
+        and device_to_open.curr_cytype == CyType.UART_CDC
+        and device_to_open.serial_port_name is None
+    ):
+        message = "Unable to detect the correct serial port to open for this device!"
+        raise CySerialBridgeError(message)
+
+    return device_to_open
 
 
-AnyDriverClass = Union[driver.CySPIControllerBridge, driver.CyI2CControllerBridge, driver.CyMfgrIface]
+AnyDriverClass = Union[driver.CySPIControllerBridge, driver.CyI2CControllerBridge, driver.CyMfgrIface, serial.Serial]
 
 
-def open_device(vid: int, pid: int, open_mode: OpenMode, serial_number: str | None = None) -> AnyDriverClass:
+def open_device(vid: int, pids: set[int], open_mode: OpenMode, serial_number: str | None = None) -> AnyDriverClass:
     """
     Convenience function for opening a CY7C652xx SCB device in a desired mode.
 
     Unlike creating an instance of the driver class directly, this function attempts to abstract away
     management of the device's CyType and will automatically change its type to the needed one.
+
+    Note: For each PID value, both the even value (pid & 0xFFFE) and the odd value ((pid & 0xFFFE) + 1)
+    will be considered.  This is to support UART CDC mode (see the README)
 
     :param vid: Vendor ID of the device you want to open
     :param pid: Product ID of the device you want to open
@@ -246,7 +306,7 @@ def open_device(vid: int, pid: int, open_mode: OpenMode, serial_number: str | No
     :param open_mode: Mode to open the SCB device in
     """
     # Step 1: Search for matching devices on the system
-    device_to_open = _scan_for_device(vid, pid, serial_number)
+    device_to_open = _scan_for_device(open_mode, vid, pids, serial_number)
 
     # Step 2: Change type of the device, if needed
     needed_cytype: CyType | None = open_mode.value[0]
@@ -265,7 +325,7 @@ def open_device(vid: int, pid: int, open_mode: OpenMode, serial_number: str | No
         # Wait for the device to re-enumerate with the new type
         while True:
             try:
-                device_to_open = _scan_for_device(vid, pid, serial_number)
+                device_to_open = _scan_for_device(open_mode, vid, pids, serial_number)
 
                 # log.debug(f"Scan found a device with CyType {device_to_open.curr_cytype}")
 
@@ -290,4 +350,7 @@ def open_device(vid: int, pid: int, open_mode: OpenMode, serial_number: str | No
         log.info(f"Changed type of device in {time.time() - change_type_start_time:.04f} sec")
 
     # Step 3: Instantiate the driver!
-    return typing.cast(AnyDriverClass, driver_class(device_to_open.usb_device))  # type: ignore[call-arg]
+    if open_mode == OpenMode.UART_CDC:
+        return serial.Serial(port=device_to_open.serial_port_name)
+    else:
+        return typing.cast(AnyDriverClass, driver_class(device_to_open.usb_device))  # type: ignore[call-arg]

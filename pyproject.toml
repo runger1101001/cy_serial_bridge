@@ -53,7 +53,8 @@ cy_serial_bridge_cli = 'cy_serial_bridge.cli:main'
 
 [tool.poetry.dependencies]
 python = '^3.8.1'
-libusb1 = "^2.0.0"
+libusb1 = "^3.0.0"
+pyserial = "^3.5"
 
 [tool.poetry.group.dev.dependencies]
 mypy = '^1.8.0'

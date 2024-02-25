@@ -17,7 +17,7 @@ def to_int(v: str) -> int:
 def do_save(args: Any) -> None:
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(args.vid, args.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+        cy_serial_bridge.open_device(args.vid, {args.pid}, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
     ) as dev:
         dev.connect()
         buf = dev.read_config()
@@ -34,7 +34,7 @@ def do_save(args: Any) -> None:
 def do_load(args: Any) -> None:
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(args.vid, args.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+        cy_serial_bridge.open_device(args.vid, {args.pid}, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
     ) as dev:
         # Load bytes and check checksum
         config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(args.file)
@@ -46,6 +46,7 @@ def do_load(args: Any) -> None:
         log.info("Writing configuration...")
         dev.write_config(config_block)
         dev.disconnect()
+        dev.reset_device()
 
         log.info("Done!")
 
@@ -59,7 +60,7 @@ def do_decode(args: Any) -> None:
 def do_reconfigure(args: Any) -> None:
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(args.vid, args.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+        cy_serial_bridge.open_device(args.vid, {args.pid}, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
     ) as dev:
         dev.connect()
 
@@ -109,7 +110,7 @@ def do_change_type(args: Any) -> None:
     dev: cy_serial_bridge.driver.CyMfgrIface
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(args.vid, args.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+        cy_serial_bridge.open_device(args.vid, {args.pid}, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
     ) as dev:
         dev.change_type(cy_type)
 
@@ -124,7 +125,7 @@ def do_scan(args: Any) -> None:
     scan_filter = None if args.all else {(args.vid, args.pid)}
     devices = cy_serial_bridge.device_discovery.list_devices(scan_filter)
 
-    if devices is None:
+    if len(devices) == 0:
         if args.all:
             print("No devices found on the system that look like a CY7C652xx!")
         else:
@@ -133,21 +134,18 @@ def do_scan(args: Any) -> None:
     else:
         print("Detected Devices:")
         for device in devices:
+            print(f"- {device.vid:04x}:{device.pid:04x} (Type: {device.curr_cytype.name})", end="")
+
             if device.open_failed:
                 if sys.platform == "win32":
-                    print(
-                        f"- {device.vid:04x}:{device.pid:04x} (Type: {device.curr_cytype.name}) <Open failed, cannot get "
-                        f"name or serno.  Attach WinUSB driver with Zadig!>"
-                    )
+                    print("<Open failed, cannot get name, com port, or serno.  Attach WinUSB driver with Zadig!>")
                 else:
-                    print(
-                        f"- {device.vid:04x}:{device.pid:04x} (Type: {device.curr_cytype.name}) <Open failed, cannot get "
-                        f"name or serial number>"
-                    )
+                    print("<Open failed, cannot get name, tty, or serial number.  Check udev rules and permissions.>")
             else:
-                print(
-                    f"- {device.vid:04x}:{device.pid:04x} {device.manufacturer_str} {device.product_str} (SerNo: {device.serial_number}) (Type: {device.curr_cytype.name})"
-                )
+                print(f" (SerNo: {device.serial_number}) (Type: {device.curr_cytype.name})", end="")
+                if device.serial_port_name is not None:
+                    print(f" (Serial Port: '{device.serial_port_name}')", end="")
+                print("")
 
 
 def main() -> None:

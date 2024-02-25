@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import io
 import sys
 import time
 from dataclasses import dataclass
@@ -78,7 +77,7 @@ def _find_path(
 
 def _get_type(us: usb1.USBInterfaceSetting) -> CyType:
     """Returns CY_TYPE of USB Setting"""
-    if us.getClass() == CyClass.VENDOR:
+    if us.getClass() == USBClass.VENDOR:
         return CyType(us.getSubClass())
     return CyType.DISABLED
 
@@ -467,6 +466,13 @@ class CyMfgrIface(CySerBridgeBase):
 
             # Change the type
             config_block.device_type = new_type
+
+            if config_block.pid % 2 == 0 and new_type == CyType.UART_CDC:
+                config_block.pid += 1
+                log.info("Changing to UART_CDC and device has even PID.  Changing PID to 0x%x", config_block.pid)
+            elif config_block.pid % 2 == 1 and new_type != CyType.UART_CDC:
+                config_block.pid -= 1
+                log.info("Changing to non-UART_CDC and device has odd PID.  Changing PID to 0x%x", config_block.pid)
 
             log.info("Writing the following configuration to the device: %s", str(config_block))
 
@@ -1249,71 +1255,3 @@ class CyUARTConfig:
 
     # If set to true, data bytes with parity or framing errors will be dropped.
     drop_on_rx_error: bool = True
-
-
-class CyUARTBridge(CySerBridgeBase, io.RawIOBase):
-    """
-    Driver which uses a Cypress serial bridge in UART mode.
-    """
-
-    def __init__(
-        self, ud: usb1.USBDevice, read_timeout: float | None = None, scb_index: int = 0, usb_timeout: int = 1000
-    ):
-        """
-        Create a CyUARTBridge.
-
-        :param ud: USB device to open
-        :read_timeout: Timeout for serial read operations.  See set_read_timeout() for a description of the values.
-        :param scb_index: Index of the SCB to open, for multi-port devices
-        :param usb_timeout: Timeout to use for general USB operations in milliseconds
-        """
-        super().__init__(ud, CyType.UART_VENDOR, scb_index, usb_timeout)
-
-        self._read_timeout = read_timeout
-        self._curr_baud_rate: int | None = None
-
-    def set_read_timeout(self, timeout: float | None) -> None:
-        """
-        Set the timeout on serial read operations.  Behavior depends on the value passed for timeout:
-
-        * Number > 0: Reading data will abort if more than timeout seconds elapse while waiting for a packet.
-        * 0: UART will be put in nonblocking mode (the default)
-        * None: UART will block forever
-        """
-        self._read_timeout = timeout
-
-    # def set_uart_configuration(self, config: CyUARTConfig) -> None:
-    #     """
-    #     This API configures the UART module of USB Serial device.
-    #
-    #     You should always call this function after first opening the device because the configuration rewriting part of
-    #     the module does not know how to set the default UART settings in config and they may be garbage.
-    #
-    #     Note: Using this API during UART tx/rx may result in data loss.
-    #     """
-    #     self._curr_baudrate = config.baud_rate.value
-    #
-    #     binary_configuration = struct.pack(
-    #         CY_USB_UART_CONFIG_STRUCT_LAYOUT,
-    #         config.baud_rate.value,  # pinType
-    #         7 if config.seven_bit_data else 8,  # dataWidth
-    #         2 if config.two_stop_bits else 1,  # stopBits
-    #         0,  # mode (driver always sets to 0)
-    #         config.parity.value,  # parity
-    #         0,  # isMsbFirst (driver always sets to 0)
-    #         0,  # txRetry (driver always sets to 0)
-    #         0,  # rxInvertPolarity (driver always sets to 0)
-    #         config.mode.value[1],  # rxIgnoreError
-    #         config.mode.value[2],  # isFlowControl
-    #         0,  # isLoopback
-    #         0,  # flags
-    #     )
-    #
-    #     self.dev.controlWrite(
-    #         request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
-    #         request=CyVendorCmds.CY_UART_SET_CONFIG_CMD,
-    #         value=(self.scb_index << CY_SCB_INDEX_POS),
-    #         index=0,
-    #         data=binary_configuration,
-    #         timeout=self.timeout,
-    #     )

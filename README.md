@@ -21,6 +21,7 @@ This driver is being worked on with the goal of, in addition to providing a tran
 - Ship an easy solution that works with no additional user setup on Windows machines
 - Just use the serial bridge chip as a plug-and-play COM port (just use USCU to configure it in that case!)
 - Rapidly switch between I2C/SPI/UART modes (it takes almost half a second to reprogram the config block and re-enumerate the device)
+- Do continuous UART transfers (see below)
 
 ## Warnings
 
@@ -34,8 +35,9 @@ Additionally, I assume that it would be possible to brick your CY7C652xx by load
 - I2C controller/master mode operation
 - SPI controller/master mode operation
 - User flash reading & writing
+- UART CDC operation (this library changes the type of the device and finds the right tty / COM port, then pyserial handles the actual UART communication)
 ### Not supported yet
-- UART operation
+- vendor mode UART operation
 - I2C peripheral/slave mode operation
 - SPI peripheral/slave mode operation
 - CapSense
@@ -113,7 +115,7 @@ However, when using the chips with this driver, we generally want them to have a
 
 To get around these issues, I'm adopting the convention that we'll assign CY7C65xx devices the regular Cypress VID, but use an arbitrary new VID of 0xE010.  You can set this configuration on a new device with a command like:
 ```shell
-cy_serial_bridge_cli --vid 0x04b4 --pid <pid of your device> reconfigure --set-pid 0x0E10
+cy_serial_bridge_cli --vid 0x04b4 --pid <pid of your device> reconfigure --set-pid 0xE010
 ```
 (note that this has to be run from a `poetry shell` if developing locally)
 
@@ -121,13 +123,25 @@ To determine what the VID and PID of your device currently are, you can use:
 ```shell
 cy_serial_bridge_cli scan --all
 ```
-This will do a heuristic search of all the USB devices on your machine to find ones which "look like" CY7C652xx chips based on their descriptor layout.  Note that currently this will not find devices set to "virtual COM port" mode in USCU, they have to be set to vendor mode.
+This will do a heuristic search of all the USB devices on your machine to find ones which "look like" CY7C652xx chips based on their descriptor layout.
 
 Also note that adding `--randomize-serno` to that command will assign a random serial number to the chip, which is helpful for provisioning new boards.
 
-Be careful with this, though.  If you plan to use this driver in a real product, this strategy will not be usable, as we are basically "squatting" on Cypress's VID space without paying.  You will have to sort out a VID and PID value for yourself I'm afraid.
+Another issue: On Windows, if you have a given VID and PID assigned to use the WinUSB driver via Zadig, Windows will not try and use the USB CDC driver to enumerate COM ports from the device.  This means that a device in SPI/I2C mode cannot use the same VID and PID as a device in UART CDC mode.  To solve this, this driver automatically uses two PIDs for each device.  The even PID is used in SPI/I2C mode, and the odd PID is used in UART CDC mode.
+
+Be careful with this, though.  If you plan to use this driver in a real product, this strategy will not be usable, as we are basically "squatting" on Cypress's VID space without paying.  You will have to sort out a VID and two consecutive PID values for yourself I'm afraid.
 
 ## To Do List / Known Issues
 - If the I2C lines are not pulled up to 3.3V, I2C read and write bulk transfers hang forever and we don't have error handling for this
 - Need to understand the formatting of the data argument for SPI when frame size is not 8 bits
 - I2CNACKError.bytes_written is not correct
+- Need to characterize the largest transfer size that can be done of each type -- e.g. can we do transfers larger than the 256 byte (SPI/I2C) / 190 byte (UART) buffer on the chip?
+
+### Note about Vendor UART Mode
+Currently, this driver does not support the "vendor UART" mode of the serial bridge chip.  In vendor UART mode, the serial bridge chip still displays the custom "vendor" interface to the PC, and the Python driver has to manually send and receive bytes via the correct endpoints.  The problem, however, is that the A in UART stands for Asynchronous: other devices can send bytes to the serial bridge asynchronously whenever they want to, and it's up to the host software to get the bytes off the chip before its 190 byte buffer fills up.
+
+Unfortunately, the way that a naive python driver would work, bytes are only read when a thread calls a read function on the UART driver.  They aren't read at any other time.  So, if somebody is sending you data over UART and your application code does not poll the UART fast enough, you would lose data.
+
+One way to fix this would be to have the driver continually submit USB transfers to the CY7C652xx in the background, so that data is transferred to the host machine as soon as the bridge chip makes it available.  This would help with the buffering situation a lot, and python-libusb1 does support the async API needed to make it work.  However, the threading situation would get complicated: either we would need a new background thread to be in charge of submitting all the transfers and monitoring when they finish (and also this might mean converting every single transfer done anywhere in the driver into an asynchronous transfer so that that thread is the only one processing events), OR we need support for the `handleEventsCompleted()` function, which is [not currently included](https://github.com/vpelletier/python-libusb1/issues/94) in the python-libusb1 wrapper.
+
+However, even that method wouldn't be the best possible solution, because data could still be lost if the Python thread doing the USB operations doesn't run fast enough.  Instead, using UART CDC mode lets the OS driver handle all of the nitty-gritty USB stuff.  On the application side, the well-established Pyserial library can be used to read from the standard serial port provided by the CY7C652xx.
