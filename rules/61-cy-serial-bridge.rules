@@ -1,7 +1,11 @@
 # CY7C652xx USB-serial bridge chips, used with cy_serial_bridge driver.
 # This grants access to physically present users and users in the `plugdev` group.
-SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e010", MODE="660", GROUP="plugdev", TAG+="uaccess" # This rule uses an even PID, so it's for SPI/I2C mode
-SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e011", MODE="660", GROUP="plugdev", TAG+="uaccess" # This rule uses an odd PID, so it's for UART CDC mode
+
+# This rule uses an even PID, so it's for SPI/I2C mode
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e010", GROUP="plugdev", TAG+="uaccess"
+
+# This rule uses an odd PID, so it's for UART CDC mode
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e011", GROUP="plugdev", TAG+="uaccess"
 
 # This one grants access to the serial port tty
 SUBSYSTEM=="tty", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e011", MODE="660", GROUP="plugdev", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
