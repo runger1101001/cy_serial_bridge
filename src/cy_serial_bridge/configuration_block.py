@@ -133,7 +133,6 @@ class ConfigurationBlock:
         Note: I would not recommend setting this to JTAG, MFGR, or DISABLED; I do not know what the
         hardware will do with those values as they are not officially supported modes.
         """
-
         if self._cfg_bytes[0x1D] == 0x01 and self._cfg_bytes[0x1C] == CyType.UART_VENDOR.value:
             return CyType.UART_CDC
         elif self._cfg_bytes[0x1D] == 0x02 and self._cfg_bytes[0x1C] == 0x01:

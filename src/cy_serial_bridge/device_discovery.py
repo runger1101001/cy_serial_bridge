@@ -77,18 +77,20 @@ def list_devices(
         if cfg.getNumInterfaces() != 2 and cfg.getNumInterfaces() != 3:
             continue
 
+        mfg_interface_settings: usb1.USBInterfaceSetting
+
         if cfg.getNumInterfaces() == 3 and cfg[0][0].getClass() == 0x2:
             # USB CDC mode
             usb_cdc_interface_settings: usb1.USBInterfaceSetting = cfg[0][0]
             cdc_data_interface_settings: usb1.USBInterfaceSetting = cfg[1][0]
-            mfg_interface_settings: usb1.USBInterfaceSetting = cfg[2][0]
+            mfg_interface_settings = cfg[2][0]
 
             # Check USB CDC interface
             if usb_cdc_interface_settings.getSubClass() != 0x2:
                 continue
 
             # Check CDC Data interface
-            if cdc_data_interface_settings.getClass() != 0x0a or cdc_data_interface_settings.getSubClass() != 0x0:
+            if cdc_data_interface_settings.getClass() != 0x0A or cdc_data_interface_settings.getSubClass() != 0x0:
                 continue
 
             curr_cytype = CyType.UART_CDC
@@ -96,13 +98,17 @@ def list_devices(
         else:
             # USB vendor mode
             scb_interface_settings: usb1.USBInterfaceSetting = cfg[0][0]
-            mfg_interface_settings: usb1.USBInterfaceSetting = cfg[1][0]
+            mfg_interface_settings = cfg[1][0]
 
             # Check SCB interface -- the Class should be 0xFF (vendor defined/no rules)
             # and the SubClass value gives the CyType
             if scb_interface_settings.getClass() != 0xFF:
                 continue
-            if scb_interface_settings.getSubClass() not in {CyType.UART_VENDOR.value, CyType.SPI.value, CyType.I2C.value}:
+            if scb_interface_settings.getSubClass() not in {
+                CyType.UART_VENDOR.value,
+                CyType.SPI.value,
+                CyType.I2C.value,
+            }:
                 continue
 
             # Check SCB endpoints
@@ -221,7 +227,7 @@ def _scan_for_device(vid: int, pid: int, serial_number: str | None) -> DeviceLis
                 message = f"Multiple devices found with VID:PID {vid:04x}:{pid:04x} but none matched the specified serial number!"
                 raise CySerialBridgeError(message)
 
-    return device_to_open
+    return device_to_open  # type: ignore[return-value]
 
 
 AnyDriverClass = Union[driver.CySPIControllerBridge, driver.CyI2CControllerBridge, driver.CyMfgrIface]
@@ -259,7 +265,6 @@ def open_device(vid: int, pid: int, open_mode: OpenMode, serial_number: str | No
         # Wait for the device to re-enumerate with the new type
         while True:
             try:
-                device_to_open = None
                 device_to_open = _scan_for_device(vid, pid, serial_number)
 
                 # log.debug(f"Scan found a device with CyType {device_to_open.curr_cytype}")
@@ -285,4 +290,4 @@ def open_device(vid: int, pid: int, open_mode: OpenMode, serial_number: str | No
         log.info(f"Changed type of device in {time.time() - change_type_start_time:.04f} sec")
 
     # Step 3: Instantiate the driver!
-    return typing.cast(AnyDriverClass, driver_class(device_to_open.usb_device))
+    return typing.cast(AnyDriverClass, driver_class(device_to_open.usb_device))  # type: ignore[call-arg]

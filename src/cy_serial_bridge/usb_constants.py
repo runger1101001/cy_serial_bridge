@@ -54,7 +54,9 @@ class CyType(IntEnum):
 
     # Below constants are not "real" values of CyType in the hardware and rather are just used internally
     # by this driver.
-    UART_CDC = 6  # Used to indicate a device which is in CDC UART mode (which will automatically work using an OS driver)
+    UART_CDC = (
+        6  # Used to indicate a device which is in CDC UART mode (which will automatically work using an OS driver)
+    )
     UART_PHDC = 7  # Used to indicate a device which is in PHDC (Personal Healthcare Device Class) UART mode
 
 

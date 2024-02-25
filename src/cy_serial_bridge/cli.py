@@ -9,6 +9,7 @@ import cy_serial_bridge
 from cy_serial_bridge.usb_constants import DEFAULT_PID, DEFAULT_VID
 from cy_serial_bridge.utils import log
 
+
 def to_int(v: str) -> int:
     return int(v, 0)
 

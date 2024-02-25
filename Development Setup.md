@@ -15,8 +15,8 @@ poetry shell # This activates a virtual environment containing the dependencies
 
 ### Running Linters and Formatter
 ```shell
-poetry run ruff check --fix .
 poetry run mypy -p cy_serial_bridge
+poetry run ruff check --fix .
 poetry run ruff format .
 ```
 
