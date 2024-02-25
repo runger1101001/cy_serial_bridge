@@ -3,7 +3,7 @@ from __future__ import annotations
 import pathlib
 import re
 import struct
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from cy_serial_bridge.usb_constants import CY_CONFIG_STRING_MAX_LEN_BYTES, CY_DEVICE_CONFIG_SIZE, CyType
 
@@ -245,7 +245,24 @@ class ConfigurationBlock:
         self._encode_string_field(0xA8, 0x172, value)
 
     @property
-    def config_bytes(self) -> bytes:
+    def default_frequency(self) -> int:
+        """
+        Default UART baudrate or SPI/I2C clock frequency when the serial bridge initializes
+        """
+        # Baudrate is a three byte integer so we have to append a 0 MSByte
+        return cast(int, struct.unpack("<I", self._cfg_bytes[0x24:0x27] + b"\x00")[0])
+
+    @default_frequency.setter
+    def default_frequency(self, value: int) -> None:
+        # Frequency may never be higher than 3MHz in any mode
+        if value > 3e6:
+            message = "Frequency may not be higher than 3MHz"
+            raise ValueError(message)
+
+        self._cfg_bytes[0x24:0x27] = struct.pack("<I", value)[0:3]
+
+    @property
+    def config_bytes(self) -> bytearray:
         """
         Get the raw configuration bytes for this buffer.
 

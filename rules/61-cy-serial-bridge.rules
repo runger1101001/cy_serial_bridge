@@ -7,5 +7,10 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e010", GROUP="plug
 # This rule uses an odd PID, so it's for UART CDC mode
 SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e011", GROUP="plugdev", TAG+="uaccess"
 
+# Also provide rules for factory-new devices with the default VID and PID
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="0002", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="0003", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="0004", GROUP="plugdev", TAG+="uaccess"
+
 # This one grants access to the serial port tty
 SUBSYSTEM=="tty", ATTRS{idVendor}=="04b4", ATTRS{idProduct}=="e011", MODE="660", GROUP="plugdev", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"

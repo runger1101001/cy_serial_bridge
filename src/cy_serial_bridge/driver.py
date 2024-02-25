@@ -431,7 +431,7 @@ class CyMfgrIface(CySerBridgeBase):
 
     def change_type(self, new_type: CyType) -> None:
         """
-        Convenience function for changing the CyType of the device.
+        Changes the CyType of the device.  Also makes other config changes needed to make that work.
 
         Note: After calling this function, the new CyType will not take effect until
         you reset the device
@@ -453,6 +453,17 @@ class CyMfgrIface(CySerBridgeBase):
             elif config_block.pid % 2 == 1 and new_type != CyType.UART_CDC:
                 config_block.pid -= 1
                 log.info("Changing to non-UART_CDC and device has odd PID.  Changing PID to 0x%x", config_block.pid)
+
+            # I did notice an issue where the region from offset 0x27 to 0x2f seems to be used to store
+            # mode-specific settings, and the serial bridge internal-errors and doesn't respond to USB requests
+            # in some cases if these settings are invalid.
+            # I have not implemented encoding/decoding for this block, but we can program in known good values.
+            if new_type == CyType.SPI:
+                # Confirmed working for SPI (and probably I2C)
+                config_block.config_bytes[0x27:0x30] = b"\x00\x08\x00\x00\x01\x01\x01\x00\x00"
+            else:
+                # Confirmed working for UART_CDC and I2C
+                config_block.config_bytes[0x27:0x30] = b"\x00\x02\x08\x01\x00\x00\x00\x00\x00"
 
             log.info("Writing the following configuration to the device: %s", str(config_block))
 

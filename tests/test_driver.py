@@ -43,6 +43,7 @@ def test_cfg_block_generation():
     assert config_block.product_string == "Mbed CE CY7C65211"
     assert config_block.serial_number == "14224672048496620243684302669570"
     assert not config_block.capsense_on
+    assert config_block.default_frequency == 100000
 
     # Make sure that we can modify the attributes which support being changed
     config_block.device_type = cy_serial_bridge.CyType.UART_CDC
@@ -60,6 +61,9 @@ def test_cfg_block_generation():
     assert config_block.mfgr_string == "Rockwell Automation"
     assert config_block.product_string == "Turbo Encabulator"
     assert config_block.serial_number == "1337"
+
+    config_block.default_frequency = 2056000
+    assert config_block.default_frequency == 2056000
 
     # Also verify that strings can be changed to None and this works
     config_block.mfgr_string = None
