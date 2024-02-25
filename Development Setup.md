@@ -22,7 +22,7 @@ poetry run ruff format .
 
 ### Running Tests
 ```shell
-poetry run pytest --capture=no tests/
+poetry run pytest -v --capture=no --log-cli-level=INFO tests/
 ```
 
 ### Uploading to PyPi

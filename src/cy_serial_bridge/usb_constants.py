@@ -46,11 +46,16 @@ class CyType(IntEnum):
     """
 
     DISABLED = 0
-    UART = 1
+    UART_VENDOR = 1  # Indicates UART with the vendor interface (which requires a non-standard driver to talk to)
     SPI = 2
     I2C = 3
     JTAG = 4
     MFG = 5  # Manufacturing interface.  This is used to configure settings of the device.
+
+    # Below constants are not "real" values of CyType in the hardware and rather are just used internally
+    # by this driver.
+    UART_CDC = 6  # Used to indicate a device which is in CDC UART mode (which will automatically work using an OS driver)
+    UART_PHDC = 7  # Used to indicate a device which is in PHDC (Personal Healthcare Device Class) UART mode
 
 
 class CyVendorCmds(IntEnum):
@@ -211,3 +216,24 @@ assert struct.calcsize(CY_USB_I2C_CONFIG_STRUCT_LAYOUT) == CyI2c.CONFIG_LENGTH
 # #pragma pack()
 CY_USB_SPI_CONFIG_STRUCT_LAYOUT = "<I10B2x"
 assert struct.calcsize(CY_USB_SPI_CONFIG_STRUCT_LAYOUT) == CySpi.CONFIG_LEN
+
+# C structure layout:
+# #pragma pack(1)
+# typedef struct {
+#     CY_UART_BAUD_RATE baudRate;
+#     UINT8 pinType;
+#     UINT8 dataWidth;
+#     UINT8 stopBits;
+#     UINT8 mode;
+#     UINT8 parity;
+#     UINT8 isMsbFirst;
+#     UINT8 txRetry;;
+#     UINT8 rxInvertPolarity;
+#     UINT8 rxIgnoreError;
+#     UINT8 isFlowControl;
+#     UINT8 isLoopBack;
+#     UINT8 flags;
+# }CyUsUartConfig_t;
+# #pragma pack()
+CY_USB_UART_CONFIG_STRUCT_LAYOUT = "<I12B"
+assert struct.calcsize(CY_USB_UART_CONFIG_STRUCT_LAYOUT) == CyUart.CONFIG_LEN

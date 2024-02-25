@@ -72,32 +72,53 @@ def list_devices(
             continue
         cfg: usb1.USBConfiguration = dev[0]
 
-        # CY7C652xx devices always have two interfaces: one for the actual USB-serial bridge
-        # and one for the configuration interface.
-        if cfg.getNumInterfaces() != 2:
-            continue
-        scb_interface_settings: usb1.USBInterfaceSetting = cfg[0][0]
-        mfg_interface_settings: usb1.USBInterfaceSetting = cfg[1][0]
-
-        # Check SCB interface -- the Class should be 0xFF (vendor defined/no rules)
-        # and the SubClass value gives the CyType
-        if scb_interface_settings.getClass() != 0xFF:
-            continue
-        if scb_interface_settings.getSubClass() not in {CyType.UART.value, CyType.SPI.value, CyType.I2C.value}:
+        # CY7C652xx devices always have either two or three interfaces: potentially one for the USB CDC COM port,
+        # one for the actual USB-serial bridge, and one for the configuration interface.
+        if cfg.getNumInterfaces() != 2 and cfg.getNumInterfaces() != 3:
             continue
 
-        # Check SCB endpoints
-        if scb_interface_settings.getNumEndpoints() != 3:
-            continue
-        # Bulk host-to-dev endpoint
-        if scb_interface_settings[0].getAddress() != 0x01 or (scb_interface_settings[0].getAttributes() & 0x3) != 2:
-            continue
-        # Bulk dev-to-host endpoint
-        if scb_interface_settings[1].getAddress() != 0x82 or (scb_interface_settings[1].getAttributes() & 0x3) != 2:
-            continue
-        # Interrupt dev-to-host endpoint
-        if scb_interface_settings[2].getAddress() != 0x83 or (scb_interface_settings[2].getAttributes() & 0x3) != 3:
-            continue
+        if cfg.getNumInterfaces() == 3 and cfg[0][0].getClass() == 0x2:
+            # USB CDC mode
+            usb_cdc_interface_settings: usb1.USBInterfaceSetting = cfg[0][0]
+            cdc_data_interface_settings: usb1.USBInterfaceSetting = cfg[1][0]
+            mfg_interface_settings: usb1.USBInterfaceSetting = cfg[2][0]
+
+            # Check USB CDC interface
+            if usb_cdc_interface_settings.getSubClass() != 0x2:
+                continue
+
+            # Check CDC Data interface
+            if cdc_data_interface_settings.getClass() != 0x0a or cdc_data_interface_settings.getSubClass() != 0x0:
+                continue
+
+            curr_cytype = CyType.UART_CDC
+
+        else:
+            # USB vendor mode
+            scb_interface_settings: usb1.USBInterfaceSetting = cfg[0][0]
+            mfg_interface_settings: usb1.USBInterfaceSetting = cfg[1][0]
+
+            # Check SCB interface -- the Class should be 0xFF (vendor defined/no rules)
+            # and the SubClass value gives the CyType
+            if scb_interface_settings.getClass() != 0xFF:
+                continue
+            if scb_interface_settings.getSubClass() not in {CyType.UART_VENDOR.value, CyType.SPI.value, CyType.I2C.value}:
+                continue
+
+            # Check SCB endpoints
+            if scb_interface_settings.getNumEndpoints() != 3:
+                continue
+            # Bulk host-to-dev endpoint
+            if scb_interface_settings[0].getAddress() != 0x01 or (scb_interface_settings[0].getAttributes() & 0x3) != 2:
+                continue
+            # Bulk dev-to-host endpoint
+            if scb_interface_settings[1].getAddress() != 0x82 or (scb_interface_settings[1].getAttributes() & 0x3) != 2:
+                continue
+            # Interrupt dev-to-host endpoint
+            if scb_interface_settings[2].getAddress() != 0x83 or (scb_interface_settings[2].getAttributes() & 0x3) != 3:
+                continue
+
+            curr_cytype = CyType(scb_interface_settings.getSubClass())
 
         # Check manufacturer interface.
         # It has a defined class/subclass and has no endpoints
@@ -114,7 +135,7 @@ def list_devices(
             usb_device=dev,
             vid=dev.getVendorID(),
             pid=dev.getProductID(),
-            curr_cytype=CyType(scb_interface_settings.getSubClass()),
+            curr_cytype=curr_cytype,
             open_failed=False,
         )
         try:
@@ -145,7 +166,7 @@ class OpenMode(Enum):
 
 
 # Time we allow for the device to change its type and be enumerated on the USB bus:
-# On Windows, this nominally takes about 400 ms.
+# On Windows, this nominally takes about 400 ms, and on a Linux SBC, I measured it at up to 800 ms
 CHANGE_TYPE_TIMEOUT = 5.0  # s
 
 

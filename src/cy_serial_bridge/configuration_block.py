@@ -128,13 +128,33 @@ class ConfigurationBlock:
     @property
     def device_type(self) -> CyType:
         """
-        Type of device that this configuration describes (SPI/I2C/UART/etc)
+        Type of device that this configuration describes (SPI/I2C/UART/etc).
+
+        Note: I would not recommend setting this to JTAG, MFGR, or DISABLED; I do not know what the
+        hardware will do with those values as they are not officially supported modes.
         """
-        return CyType(self._cfg_bytes[0x1C])
+
+        if self._cfg_bytes[0x1D] == 0x01 and self._cfg_bytes[0x1C] == CyType.UART_VENDOR.value:
+            return CyType.UART_CDC
+        elif self._cfg_bytes[0x1D] == 0x02 and self._cfg_bytes[0x1C] == 0x01:
+            return CyType.UART_PHDC
+        elif self._cfg_bytes[0x1D] == 0x03:
+            return CyType(self._cfg_bytes[0x1C])
+        else:
+            message = "Don't know how to parse DeviceType from descriptor"
+            raise ValueError(message)
 
     @device_type.setter
     def device_type(self, value: CyType) -> None:
-        self._cfg_bytes[0x1C] = value.value
+        if value == CyType.UART_CDC:
+            self._cfg_bytes[0x1C] = CyType.UART_VENDOR.value
+            self._cfg_bytes[0x1D] = 0x01
+        elif value == CyType.UART_PHDC:
+            self._cfg_bytes[0x1C] = CyType.UART_VENDOR.value
+            self._cfg_bytes[0x1D] = 0x02
+        else:
+            self._cfg_bytes[0x1C] = value.value
+            self._cfg_bytes[0x1D] = 0x03
 
     @property
     def config_format_version(self) -> tuple[int, int, int]:

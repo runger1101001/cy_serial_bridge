@@ -9,7 +9,6 @@ import cy_serial_bridge
 from cy_serial_bridge.usb_constants import DEFAULT_PID, DEFAULT_VID
 from cy_serial_bridge.utils import log
 
-
 def to_int(v: str) -> int:
     return int(v, 0)
 
@@ -17,7 +16,7 @@ def to_int(v: str) -> int:
 def do_save(args: Any) -> None:
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+        cy_serial_bridge.open_device(args.vid, args.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
     ) as dev:
         dev.connect()
         buf = dev.read_config()
@@ -34,7 +33,7 @@ def do_save(args: Any) -> None:
 def do_load(args: Any) -> None:
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+        cy_serial_bridge.open_device(args.vid, args.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
     ) as dev:
         # Load bytes and check checksum
         config_block = cy_serial_bridge.configuration_block.ConfigurationBlock(args.file)
@@ -59,7 +58,7 @@ def do_decode(args: Any) -> None:
 def do_reconfigure(args: Any) -> None:
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+        cy_serial_bridge.open_device(args.vid, args.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
     ) as dev:
         dev.connect()
 
@@ -88,12 +87,12 @@ def do_reconfigure(args: Any) -> None:
 
             log.info("Writing configuration...")
             dev.write_config(config_block)
+            dev.disconnect()
 
             log.info("Done!  Resetting device now...")
 
             # Reset the device so that the new configuration loads
             dev.reset_device()
-            dev.disconnect()
 
         except:
             dev.disconnect()
@@ -109,7 +108,7 @@ def do_change_type(args: Any) -> None:
     dev: cy_serial_bridge.driver.CyMfgrIface
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
+        cy_serial_bridge.open_device(args.vid, args.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE),
     ) as dev:
         dev.change_type(cy_type)
 
@@ -136,17 +135,17 @@ def do_scan(args: Any) -> None:
             if device.open_failed:
                 if sys.platform == "win32":
                     print(
-                        f"- {args.vid:04x}:{args.pid:04x} (Type: {device.curr_cytype.name}) <Open failed, cannot get "
+                        f"- {device.vid:04x}:{device.pid:04x} (Type: {device.curr_cytype.name}) <Open failed, cannot get "
                         f"name or serno.  Attach WinUSB driver with Zadig!>"
                     )
                 else:
                     print(
-                        f"- {args.vid:04x}:{args.pid:04x} (Type: {device.curr_cytype.name}) <Open failed, cannot get "
+                        f"- {device.vid:04x}:{device.pid:04x} (Type: {device.curr_cytype.name}) <Open failed, cannot get "
                         f"name or serial number>"
                     )
             else:
                 print(
-                    f"- {args.vid:04x}:{args.pid:04x} {device.manufacturer_str} {device.product_str} (SerNo: {device.serial_number}) (Type: {device.curr_cytype.name})"
+                    f"- {device.vid:04x}:{device.pid:04x} {device.manufacturer_str} {device.product_str} (SerNo: {device.serial_number}) (Type: {device.curr_cytype.name})"
                 )
 
 
@@ -193,7 +192,7 @@ def main() -> None:
         "type",
         help="Set the type of device that the serial bridge acts as.  Used for configurable bridge devices (65211/65215)",
     )
-    type_ap.add_argument("type", choices=["SPI", "I2C", "UART"])
+    type_ap.add_argument("type", choices=["SPI", "I2C", "UART_CDC"])
     type_ap.set_defaults(func=do_change_type)
 
     reconfigure_ap = subparser.add_parser(
