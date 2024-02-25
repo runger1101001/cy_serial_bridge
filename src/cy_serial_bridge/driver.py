@@ -6,10 +6,9 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from math import ceil
-from typing import TYPE_CHECKING, Callable, Tuple, Union, cast
+from typing import TYPE_CHECKING, Tuple, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
     from types import TracebackType
 
     from typing_extensions import Self
@@ -18,7 +17,7 @@ import usb1  # from 'libusb1' package
 
 from cy_serial_bridge.configuration_block import ConfigurationBlock
 from cy_serial_bridge.usb_constants import *
-from cy_serial_bridge.utils import ByteSequence, CySerialBridgeError, log
+from cy_serial_bridge.utils import ByteSequence, CySerialBridgeError, DiscoveredDevice, log
 
 """
 Module containing the logic for communicating with the CY7C652xx USB device.
@@ -56,51 +55,16 @@ class I2CArbLostError(CySerialBridgeError):
     """
 
 
-USBPathEntry = Union[usb1.USBDevice, usb1.USBConfiguration, usb1.USBInterface, usb1.USBInterfaceSetting]
-
-
-def _find_path(
-    ux: USBPathEntry, func: Callable[[USBPathEntry], bool], hist: list[USBPathEntry]
-) -> Generator[USBPathEntry, None, None]:
-    """Scans through USB device structure"""
-    try:
-        hist.insert(0, ux)
-        if func(ux):
-            yield hist.copy()
-        for ux_child in ux:
-            yield from _find_path(ux_child, func, hist)
-    except TypeError:
-        pass
-    finally:
-        hist.pop(0)
-
-
-def _get_type(us: usb1.USBInterfaceSetting) -> CyType:
-    """Returns CY_TYPE of USB Setting"""
-    if us.getClass() == USBClass.VENDOR:
-        return CyType(us.getSubClass())
-    return CyType.DISABLED
-
-
-def _find_type(ud: usb1.USBDevice, cy_type: CyType) -> Generator[USBPathEntry, None, None]:
-    """Finds USB interface by CY_TYPE. Yields list of (us, ui, uc, ud) set"""
-
-    def check_match(ux: USBPathEntry) -> bool:
-        return isinstance(ux, usb1.USBInterfaceSetting) and _get_type(ux) == cy_type
-
-    yield from _find_path(ud, check_match, [])
-
-
 class CySerBridgeBase:
     """
     Base class containing functionality common to all modes of a CY7C652xx
     """
 
-    def __init__(self, ud: usb1.USBDevice, cy_type: CyType, scb_index: int, timeout: int):
+    def __init__(self, discovered_dev: DiscoveredDevice, cy_type: CyType, scb_index: int, timeout: int):
         """
         Create a CySerBridgeBase.
 
-        :param ud: USB device to open
+        :param discovered_dev: Discovered device to open (from list_devices())
         :param cy_type: Type to open the device as.
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for USB operations in milliseconds
@@ -111,37 +75,30 @@ class CySerBridgeBase:
 
         self.cy_type = cy_type
         self.scb_index = scb_index
-        found = list(_find_type(ud, cy_type))
-        if not found:
-            message = "No device found with given type"
-            raise CySerialBridgeError(message)
-        if len(found) - 1 > scb_index:
-            message = "Not enough interfaces (SCBs) found"
-            raise CySerialBridgeError(message)
+        self.discovered_dev = discovered_dev
 
-        # setup parameters
-        us: usb1.USBInterfaceSetting
-        ui: usb1.USBInterface
-        uc: usb1.USBConfiguration
-        us, ui, uc, ud = found[scb_index]
-        self.us_num = us.getAlternateSetting()
-        self.if_num = us.getNumber()
-        self.uc_num = uc.getConfigurationValue()
         self.timeout = timeout
 
-        # scan EPs
         self.ep_in = None
         self.ep_out = None
-        for ep in us:
-            ep_attr = ep.getAttributes()
-            ep_addr = ep.getAddress()
-            if ep_attr == EP_BULK:
-                if ep_addr & EP_IN:
-                    self.ep_in = ep_addr
-                else:
-                    self.ep_out = ep_addr
-            elif ep_attr == EP_INTR:
-                self.ep_intr = ep_addr
+
+        if self.cy_type != CyType.MFG:
+            if self.discovered_dev.scb_interface_settings is None:
+                message = "Opening this CyType requires an SCB interface to be present on the USB device"
+                raise CySerialBridgeError(message)
+
+            # grab EPs from SCB endpoint
+            ep: usb1.USBEndpoint
+            for ep in self.discovered_dev.scb_interface_settings:
+                ep_attr = ep.getAttributes()
+                ep_addr = ep.getAddress()
+                if ep_attr == EP_BULK:
+                    if ep_addr & EP_IN:
+                        self.ep_in = ep_addr
+                    else:
+                        self.ep_out = ep_addr
+                elif ep_attr == EP_INTR:
+                    self.ep_intr = ep_addr
 
         # Check that we got the expected endpoints (though the manufacturer interface doesn't have them)
         if cy_type != CyType.MFG and (self.ep_in is None or self.ep_out is None or self.ep_intr is None):
@@ -150,39 +107,59 @@ class CySerBridgeBase:
 
         log.info("Discovered USB endpoints successfully")
 
-        # open USBDeviceHandle
-        try:
-            self.dev = ud.open()
-        except usb1.USBErrorNotFound as ex:
-            if sys.platform == "win32":
-                message = "Failed to open USB device, ensure that WinUSB driver has been loaded for it using Zadig"
-                raise CySerialBridgeError(message) from ex
-            else:
-                raise
-
-        if usb1.hasCapability(usb1.CAP_SUPPORTS_DETACH_KERNEL_DRIVER):
-            # detach kernel driver to gain access
-            self.dev.setAutoDetachKernelDriver(True)
-
     def __enter__(self) -> Self:
+        # Create temporary exit stack to open other context managers
+        with contextlib.ExitStack() as temp_stack:
+            # open USBDeviceHandle
+            try:
+                self.dev = self.discovered_dev.usb_device.open()
+
+            except usb1.USBErrorNotFound as ex:
+                if sys.platform == "win32":
+                    message = "Failed to open USB device, ensure that WinUSB driver has been loaded for it using Zadig"
+                    raise CySerialBridgeError(message) from ex
+                else:
+                    raise
+
         try:
+            if usb1.hasCapability(usb1.CAP_SUPPORTS_DETACH_KERNEL_DRIVER):
+                # In order to access the interface we need, we need to detach all kernel drivers from
+                # any interfaces they are attached to.  It's not enough to just detach it from the interface
+                # we need!
+                # https://elixir.bootlin.com/linux/latest/source/drivers/usb/core/devio.c#L1543
+                all_interfaces = (
+                    self.discovered_dev.mfg_interface_settings,
+                    self.discovered_dev.scb_interface_settings,
+                    self.discovered_dev.usb_cdc_interface_settings,
+                    self.discovered_dev.usb_cdc_interface_settings,
+                )
+
+                for interface in filter(lambda iface: iface is not None, all_interfaces):
+                    if self.dev.kernelDriverActive(interface.getNumber()):
+                        self.dev.detachKernelDriver(interface.getNumber())
+
+            if self.cy_type == CyType.MFG:
+                # Interface to use is the manufacturer interface
+                target_interface = self.discovered_dev.mfg_interface_settings
+            else:
+                # Interface to use is the SCB interface
+                target_interface = self.discovered_dev.scb_interface_settings
+
             #
             # NOTE:
             # Windows and others seems to differ in expected order of
             # when to claim interface and when to set configuration.
             #
-            self.dev.setConfiguration(self.uc_num)
-            if self.us_num > 0:
-                self.dev.setInterfaceAltSetting(self.if_num, self.us_num)
+            self.dev.setConfiguration(self.discovered_dev.usb_configuration.getConfigurationValue())
+            if target_interface.getAlternateSetting() > 0:
+                self.dev.setInterfaceAltSetting(target_interface.getNumber(), target_interface.getAlternateSetting())
 
-            self.dev.claimInterface(self.if_num)
+            temp_stack.enter_context(self.dev.claimInterface(target_interface.getNumber()))
 
             # Check the device signature
             signature = bytes(self.get_signature())
             log.info("Device signature: %s", repr(signature))
             if signature != b"CYUS":
-                # __exit__ won't be called if we raise an exception here
-                self.dev.releaseInterface(self.if_num)
                 self.dev.close()
 
                 message = "Invalid signature for CY7C652xx device"
@@ -194,6 +171,9 @@ class CySerBridgeBase:
                 "Connected to %s interface of CY7C652xx device, firmware version %d.%d.%d build %d"
                 % (self.cy_type.name, *firmware_version)
             )
+
+            # Creates a new exit stack with ownership of the USB device "moved" into it
+            self.exit_stack = temp_stack.pop_all()
 
         except usb1.USBErrorNotSupported as ex:
             if sys.platform == "win32":
@@ -210,7 +190,7 @@ class CySerBridgeBase:
         # On Linux, calling reset_device() causes this error to be raised when we try to close the device.
         # Ignore it so that we can close the device without an error.
         with contextlib.suppress(usb1.USBErrorNoDevice):
-            self.dev.releaseInterface(self.if_num)
+            self.exit_stack.pop_all()
 
         if self.dev:
             self.dev.close()
@@ -369,15 +349,15 @@ class CyMfgrIface(CySerBridgeBase):
     the operation of that program.
     """
 
-    def __init__(self, ud: usb1.USBDevice, scb_index: int = 0, timeout: int = 1000):
+    def __init__(self, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000):
         """
         Create a CySerBridgeBase.
 
-        :param ud: USB device to open
+        :param discovered_dev: Discovered device to open (from list_devices())
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for USB operations in milliseconds
         """
-        super().__init__(ud, CyType.MFG, scb_index, timeout)
+        super().__init__(discovered_dev, CyType.MFG, scb_index, timeout)
 
     ######################################################################
     # Non-public APIs still under experimental stage
@@ -497,15 +477,15 @@ class CyI2CControllerBridge(CySerBridgeBase):
     Driver which uses a Cypress serial bridge in I2C controller (master) mode.
     """
 
-    def __init__(self, ud: usb1.USBDevice, scb_index: int = 0, timeout: int = 1000):
+    def __init__(self, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000):
         """
         Create a CyI2CControllerBridge.
 
-        :param ud: USB device to open
+        :param discovered_dev: Discovered device to open (from list_devices())
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for general USB operations in milliseconds
         """
-        super().__init__(ud, CyType.I2C, scb_index, timeout)
+        super().__init__(discovered_dev, CyType.I2C, scb_index, timeout)
 
         self._curr_frequency: int | None = None
 
@@ -865,15 +845,15 @@ class CySPIControllerBridge(CySerBridgeBase):
     Driver which uses a Cypress serial bridge in SPI controller (master) mode.
     """
 
-    def __init__(self, ud: usb1.USBDevice, scb_index: int = 0, timeout: int = 1000):
+    def __init__(self, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000):
         """
         Create a CySPIControllerBridge.
 
-        :param ud: USB device to open
+        :param discovered_dev: Discovered device to open (from list_devices())
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for general USB operations in milliseconds
         """
-        super().__init__(ud, CyType.SPI, scb_index, timeout)
+        super().__init__(discovered_dev, CyType.SPI, scb_index, timeout)
 
         self._curr_frequency: int | None = None
 
@@ -1199,59 +1179,3 @@ class CySPIControllerBridge(CySerBridgeBase):
             # If anything went wrong, try and reset the SPI module so that the next transaction works
             self._spi_reset()
             raise
-
-
-@dataclass
-class CyUARTConfig:
-    """
-    Configuration settings for using the chip in UART mode
-    """
-
-    class BaudRate(IntEnum):
-        """
-        Enumeration of supported baud rates for CY7C52xx devices
-        """
-
-        BAUD_300 = 300
-        BAUD_600 = 600
-        BAUD_1200 = 1200
-        BAUD_2400 = 2400
-        BAUD_4800 = 4800
-        BAUD_9600 = 9600
-        BAUD_14400 = 14400
-        BAUD_19200 = 19200
-        BAUD_38400 = 38400
-        BAUD_56000 = 56000
-        BAUD_57600 = 57600
-        BAUD_115200 = 115200
-        BAUD_230400 = 230400
-        BAUD_460800 = 460800
-        BAUD_921600 = 921600
-        BAUD_1000000 = 1000000
-        BAUD_3000000 = 3000000
-
-    class Parity(IntEnum):
-        """
-        Enumeration of supported UART parity types for CY7C52xx devices
-        """
-
-        DISABLE = 0
-        ODD = 1
-        EVEN = 2
-        MARK = 3
-        SPACE = 4
-
-    # Baudrate that the port runs at
-    baud_rate: BaudRate
-
-    # Set to true to use 7 data bits per byte instead of 8
-    seven_bit_data: bool = False
-
-    # Set to true to use 2 stop bits per byte instead of 1
-    two_stop_bits: bool = False
-
-    # Parity type
-    parity: Parity = Parity.DISABLE
-
-    # If set to true, data bytes with parity or framing errors will be dropped.
-    drop_on_rx_error: bool = True

@@ -154,15 +154,15 @@ files = [
 
 [[package]]
 name = "libusb1"
-version = "2.0.1"
+version = "3.1.0"
 description = "Pure-python wrapper for libusb-1.0"
 optional = false
 python-versions = "*"
 files = [
-    {file = "libusb1-2.0.1-py3-none-any.whl", hash = "sha256:81381ce1d8852a4d4345b2ee8218971d35865b5f025fef96b43ee082757099cd"},
-    {file = "libusb1-2.0.1-py3-none-win32.whl", hash = "sha256:9fda3055c98ab043cfb3beac93ef1de2900ad11d949c694f58bdf414ce2bd03c"},
-    {file = "libusb1-2.0.1-py3-none-win_amd64.whl", hash = "sha256:a97bcb90f589d863c5e971b013c8cf7e1915680a951e66c4222a2c5bb64b7153"},
-    {file = "libusb1-2.0.1.tar.gz", hash = "sha256:d3ba82ecf7ab6a48d21dac6697e26504670cc3522b8e5941bd28fb56cf3f6c46"},
+    {file = "libusb1-3.1.0-py3-none-any.whl", hash = "sha256:9d9f16e2c199cab91f48ead585d3f5ec7e8e4be428a25ddfed22abf786fa9b3a"},
+    {file = "libusb1-3.1.0-py3-none-win32.whl", hash = "sha256:bc7874302565721f443a27d8182fcc7152e5b560523f12f1377b130f473e4a0c"},
+    {file = "libusb1-3.1.0-py3-none-win_amd64.whl", hash = "sha256:77a06ecfb3d002d7c2ce369e28d0138b292fe8db8a3d102b73fda231a716dd35"},
+    {file = "libusb1-3.1.0.tar.gz", hash = "sha256:4ee9b0a55f8bd0b3ea7017ae919a6c1f439af742c4a4b04543c5fd7af89b828c"},
 ]
 
 [[package]]
@@ -452,4 +452,4 @@ test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.1"
-content-hash = "83c5cacd0300f2aae3835db74364f258d0508adee35acde2954a0881381403f4"
+content-hash = "aadcebd9da8217c1ebe6e3370a7770b1dcdd92f5f5862a890d72bbacfb91eb35"
