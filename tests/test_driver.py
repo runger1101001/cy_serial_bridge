@@ -2,8 +2,12 @@ import logging
 import pathlib
 import random
 import time
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    import serial
 
 import cy_serial_bridge
 from cy_serial_bridge import DEFAULT_PID, DEFAULT_VID, OpenMode
@@ -362,3 +366,24 @@ def test_spi_read_write():
 
 
 # TODO do an SPI test showing how to use word sizes > 8
+
+
+def test_uart_loopback():
+    """
+    Test that we can send bytes over UART and they'll come back to us
+    """
+    print("Please connect a female-female jumper wire from J18 middle pin [Rx] to J21 middle pin [Tx].")
+    input("Press [ENTER] when done...")
+
+    serial_port: serial.Serial = cy_serial_bridge.open_device(
+        DEFAULT_VID, {DEFAULT_PID}, cy_serial_bridge.OpenMode.UART_CDC
+    )
+    serial_port.baudrate = 3000000  # Theoretically fastest supported by CY7C652xx
+    serial_port.timeout = 0.1  # Shouldn't take too long to see the loopback
+
+    test_string = b"Hello world!\n"
+    serial_port.write(test_string)
+
+    readback = serial_port.read(len(test_string))
+
+    assert readback == test_string

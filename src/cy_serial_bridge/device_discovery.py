@@ -49,8 +49,8 @@ def list_devices(
     device_list: list[DiscoveredDevice] = []
 
     # TODO temporary, doesn't work on Windows without this but this does not work if there is a 2nd device open
-    # usb_context.close()
-    # usb_context.open()
+    usb_context.close()
+    usb_context.open()
 
     dev: usb1.USBDevice
     for dev in usb_context.getDeviceIterator(skip_on_error=True):
@@ -270,7 +270,7 @@ def open_device(vid: int, pids: set[int], open_mode: OpenMode, serial_number: st
     will be considered.  This is to support UART CDC mode (see the README)
 
     :param vid: Vendor ID of the device you want to open
-    :param pid: Product ID of the device you want to open
+    :param pids: Product IDs of the device you want to open
     :param serial_number: Serial number of the device you want to open.  May be left as None if there is only one device attached.
     :param open_mode: Mode to open the SCB device in
     """
