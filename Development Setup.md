@@ -26,4 +26,4 @@ poetry run pytest -v --capture=no --log-cli-level=INFO tests/
 ```
 
 ### Uploading to PyPi
-TODO
+Pypy uploads will be generated automatically for releases tagged with a "vA.B.C" tag (e.g v0.1.0).

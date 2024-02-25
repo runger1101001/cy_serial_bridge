@@ -98,3 +98,27 @@ jobs:
           files: |
             *.whl
             *.tar.gz
+
+  pypi-deploy:
+    name: Build and publish Python 🐍 distributions 📦 to live PyPI
+    runs-on: ubuntu-latest
+
+    environment:
+      name: release
+      url: https://pypi.org/p/cy_serial_bridge
+
+    permissions:
+      id-token: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: built-binary
+        path: dist/
+
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1.8
