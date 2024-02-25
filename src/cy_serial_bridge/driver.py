@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import sys
 import time
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from math import ceil
 from typing import TYPE_CHECKING, Callable, Tuple, Union, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from types import TracebackType
 
     from typing_extensions import Self
@@ -58,7 +60,9 @@ class I2CArbLostError(CySerialBridgeError):
 USBPathEntry = Union[usb1.USBDevice, usb1.USBConfiguration, usb1.USBInterface, usb1.USBInterfaceSetting]
 
 
-def _find_path(ux: USBPathEntry, func: Callable[[USBPathEntry], bool], hist: list[USBPathEntry]):
+def _find_path(
+    ux: USBPathEntry, func: Callable[[USBPathEntry], bool], hist: list[USBPathEntry]
+) -> Generator[USBPathEntry, None, None]:
     """Scans through USB device structure"""
     try:
         hist.insert(0, ux)
@@ -79,7 +83,7 @@ def _get_type(us: usb1.USBInterfaceSetting) -> CyType:
     return CyType.DISABLED
 
 
-def _find_type(ud: usb1.USBDevice, cy_type):
+def _find_type(ud: usb1.USBDevice, cy_type: CyType) -> Generator[USBPathEntry, None, None]:
     """Finds USB interface by CY_TYPE. Yields list of (us, ui, uc, ud) set"""
 
     def check_match(ux: USBPathEntry) -> bool:
@@ -213,7 +217,7 @@ class CySerBridgeBase:
             self.dev.close()
         self.dev = None
 
-    def _wait_for_notification(self, event_notification_len: int, timeout: int):
+    def _wait_for_notification(self, event_notification_len: int, timeout: int) -> None:
         """
         Wait for a transfer complete notification from the serial bridge.
 
@@ -267,7 +271,9 @@ class CySerBridgeBase:
         w_index = 0
         w_length = CY_GET_SIGNATURE_LEN
 
-        return self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
+        return cast(
+            ByteSequence, self.dev.controlRead(bm_request_type, bm_request, w_value, w_index, w_length, self.timeout)
+        )
 
     def reset_device(self) -> None:
         """
@@ -293,7 +299,7 @@ class CySerBridgeBase:
         except usb1.USBErrorNoDevice:
             pass
 
-    def program_user_flash(self, addr: int, buff: ByteSequence):
+    def program_user_flash(self, addr: int, buff: ByteSequence) -> None:
         """
         The API programs user flash area. The total space available is 512 bytes.
 
@@ -364,7 +370,7 @@ class CyMfgrIface(CySerBridgeBase):
     the operation of that program.
     """
 
-    def __init__(self, ud: usb1.USBDevice, scb_index=0, timeout=1000):
+    def __init__(self, ud: usb1.USBDevice, scb_index: int = 0, timeout: int = 1000):
         """
         Create a CySerBridgeBase.
 
@@ -444,7 +450,7 @@ class CyMfgrIface(CySerBridgeBase):
 
         return cast(int, self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout))
 
-    def change_type(self, new_type: CyType):
+    def change_type(self, new_type: CyType) -> None:
         """
         Convenience function for changing the CyType of the device.
 
@@ -485,7 +491,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
     Driver which uses a Cypress serial bridge in I2C controller (master) mode.
     """
 
-    def __init__(self, ud: usb1.USBDevice, scb_index=0, timeout=1000):
+    def __init__(self, ud: usb1.USBDevice, scb_index: int = 0, timeout: int = 1000):
         """
         Create a CyI2CControllerBridge.
 
@@ -515,7 +521,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         return self
 
-    def _get_i2c_status(self, mode: CyI2c) -> bytes:
+    def _get_i2c_status(self, mode: CyI2c) -> ByteSequence:
         """
         Get the I2C status flag from the chip.
 
@@ -524,13 +530,16 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
         :param mode: Either CyI2c.MODE_WRITE or CyI2c.MODE_READ
         """
-        return self.dev.controlRead(
-            request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
-            request=CyVendorCmds.CY_I2C_GET_STATUS_CMD,
-            value=(self.scb_index << CY_SCB_INDEX_POS) | mode,
-            index=0,
-            length=CyI2c.GET_STATUS_LEN,
-            timeout=self.timeout,
+        return cast(
+            ByteSequence,
+            self.dev.controlRead(
+                request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
+                request=CyVendorCmds.CY_I2C_GET_STATUS_CMD,
+                value=(self.scb_index << CY_SCB_INDEX_POS) | mode,
+                index=0,
+                length=CyI2c.GET_STATUS_LEN,
+                timeout=self.timeout,
+            ),
         )
 
     def _i2c_reset(self, mode: CyI2c) -> None:
@@ -548,7 +557,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
             timeout=self.timeout,
         )
 
-    def set_i2c_configuration(self, config: CyI2CConfig):
+    def set_i2c_configuration(self, config: CyI2CConfig) -> None:
         """
         This API configures the I2C module of USB Serial device.
 
@@ -697,7 +706,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
 
     def i2c_write(
         self, periph_addr: int, data: ByteSequence, relinquish_bus: bool = True, io_timeout: int | None = None
-    ):
+    ) -> None:
         """
         Perform an I2C write to the given peripheral device.
 
@@ -850,7 +859,7 @@ class CySPIControllerBridge(CySerBridgeBase):
     Driver which uses a Cypress serial bridge in SPI controller (master) mode.
     """
 
-    def __init__(self, ud: usb1.USBDevice, scb_index=0, timeout=1000):
+    def __init__(self, ud: usb1.USBDevice, scb_index: int = 0, timeout: int = 1000):
         """
         Create a CySPIControllerBridge.
 
@@ -862,7 +871,7 @@ class CySPIControllerBridge(CySerBridgeBase):
 
         self._curr_frequency: int | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         super().__enter__()
 
         # Just in case the SPI module is in a bad state, reset it
@@ -905,7 +914,7 @@ class CySPIControllerBridge(CySerBridgeBase):
 
         return spi_status == b"\x00\x00\x00\x00"
 
-    def set_spi_configuration(self, config: CySPIConfig):
+    def set_spi_configuration(self, config: CySPIConfig) -> None:
         """
         This API configures the SPI module of USB Serial device.
 
@@ -989,7 +998,7 @@ class CySPIControllerBridge(CySerBridgeBase):
 
         return config
 
-    def spi_write(self, tx_data: ByteSequence, io_timeout: int | None = None):
+    def spi_write(self, tx_data: ByteSequence, io_timeout: int | None = None) -> None:
         """
         Perform an SPI write-only operation to the peripheral device.  Read data is discarded.
 
@@ -1178,9 +1187,133 @@ class CySPIControllerBridge(CySerBridgeBase):
                     message = "Timeout waiting for SPI write completion!"
                     raise CySerialBridgeError(message)
 
-            return rx_transfer.getBuffer()
+            return cast(ByteSequence, rx_transfer.getBuffer())
 
         except Exception:
             # If anything went wrong, try and reset the SPI module so that the next transaction works
             self._spi_reset()
             raise
+
+
+@dataclass
+class CyUARTConfig:
+    """
+    Configuration settings for using the chip in UART mode
+    """
+
+    class BaudRate(IntEnum):
+        """
+        Enumeration of supported baud rates for CY7C52xx devices
+        """
+
+        BAUD_300 = 300
+        BAUD_600 = 600
+        BAUD_1200 = 1200
+        BAUD_2400 = 2400
+        BAUD_4800 = 4800
+        BAUD_9600 = 9600
+        BAUD_14400 = 14400
+        BAUD_19200 = 19200
+        BAUD_38400 = 38400
+        BAUD_56000 = 56000
+        BAUD_57600 = 57600
+        BAUD_115200 = 115200
+        BAUD_230400 = 230400
+        BAUD_460800 = 460800
+        BAUD_921600 = 921600
+        BAUD_1000000 = 1000000
+        BAUD_3000000 = 3000000
+
+    class Parity(IntEnum):
+        """
+        Enumeration of supported UART parity types for CY7C52xx devices
+        """
+
+        DISABLE = 0
+        ODD = 1
+        EVEN = 2
+        MARK = 3
+        SPACE = 4
+
+    # Baudrate that the port runs at
+    baud_rate: BaudRate
+
+    # Set to true to use 7 data bits per byte instead of 8
+    seven_bit_data: bool = False
+
+    # Set to true to use 2 stop bits per byte instead of 1
+    two_stop_bits: bool = False
+
+    # Parity type
+    parity: Parity = Parity.DISABLE
+
+    # If set to true, data bytes with parity or framing errors will be dropped.
+    drop_on_rx_error: bool = True
+
+
+class CyUARTBridge(CySerBridgeBase, io.RawIOBase):
+    """
+    Driver which uses a Cypress serial bridge in UART mode.
+    """
+
+    def __init__(
+        self, ud: usb1.USBDevice, read_timeout: float | None = None, scb_index: int = 0, usb_timeout: int = 1000
+    ):
+        """
+        Create a CyUARTBridge.
+
+        :param ud: USB device to open
+        :read_timeout: Timeout for serial read operations.  See set_read_timeout() for a description of the values.
+        :param scb_index: Index of the SCB to open, for multi-port devices
+        :param usb_timeout: Timeout to use for general USB operations in milliseconds
+        """
+        super().__init__(ud, CyType.UART_VENDOR, scb_index, usb_timeout)
+
+        self._read_timeout = read_timeout
+        self._curr_baud_rate: int | None = None
+
+    def set_read_timeout(self, timeout: float | None) -> None:
+        """
+        Set the timeout on serial read operations.  Behavior depends on the value passed for timeout:
+
+        * Number > 0: Reading data will abort if more than timeout seconds elapse while waiting for a packet.
+        * 0: UART will be put in nonblocking mode (the default)
+        * None: UART will block forever
+        """
+        self._read_timeout = timeout
+
+    # def set_uart_configuration(self, config: CyUARTConfig) -> None:
+    #     """
+    #     This API configures the UART module of USB Serial device.
+    #
+    #     You should always call this function after first opening the device because the configuration rewriting part of
+    #     the module does not know how to set the default UART settings in config and they may be garbage.
+    #
+    #     Note: Using this API during UART tx/rx may result in data loss.
+    #     """
+    #     self._curr_baudrate = config.baud_rate.value
+    #
+    #     binary_configuration = struct.pack(
+    #         CY_USB_UART_CONFIG_STRUCT_LAYOUT,
+    #         config.baud_rate.value,  # pinType
+    #         7 if config.seven_bit_data else 8,  # dataWidth
+    #         2 if config.two_stop_bits else 1,  # stopBits
+    #         0,  # mode (driver always sets to 0)
+    #         config.parity.value,  # parity
+    #         0,  # isMsbFirst (driver always sets to 0)
+    #         0,  # txRetry (driver always sets to 0)
+    #         0,  # rxInvertPolarity (driver always sets to 0)
+    #         config.mode.value[1],  # rxIgnoreError
+    #         config.mode.value[2],  # isFlowControl
+    #         0,  # isLoopback
+    #         0,  # flags
+    #     )
+    #
+    #     self.dev.controlWrite(
+    #         request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
+    #         request=CyVendorCmds.CY_UART_SET_CONFIG_CMD,
+    #         value=(self.scb_index << CY_SCB_INDEX_POS),
+    #         index=0,
+    #         data=binary_configuration,
+    #         timeout=self.timeout,
+    #     )

@@ -89,7 +89,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 select = [
     'A',    # Builtins
-    # 'ANN',  # Annotations - disabled for now because mypy checks these already and is a bit less pedantic
+    'ANN',  # Annotations
     'ARG',  # Unused arguments
     'B',    # Bugbear
     # 'BLE',  # Blind except - disabled because sometimes you *don't* know what exceptions something will generate
@@ -156,6 +156,8 @@ ignore = [
     'TRY301',  # Don't call raise within a try block -- can I help it if other libraries don't use exceptions??
     'TRY300',  # Returns within try blocks
     'PLR2004', # Magic value used in comparison
+    'ANN101',  # Don't require annotations for self.  Waaaaay too complainy, plus deprecated in ruff
+    'ANN401',  # Allow typing.any
 ]
 ignore-init-module-imports = true
 line-length = 120
@@ -184,3 +186,7 @@ max-statements = 80
 
 [tool.ruff.flake8-tidy-imports]
 ban-relative-imports = 'all'
+
+# Allow __init__ to not have a return type annotation
+[tool.ruff.lint.flake8-annotations]
+mypy-init-return = true
