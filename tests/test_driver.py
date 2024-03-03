@@ -85,7 +85,7 @@ def test_user_flash():
 
     # Note: the mode that we open the device in doesn't really matter, it can be anything
     # for this test
-    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE) as dev:
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE) as dev:
         # Create a random 8-digit number which will be used in the test.
         # This ensures the flash is actually getting programmed and we aren't just reusing old data.
         random_number = random.randint(0, 10**8 - 1)
@@ -148,15 +148,15 @@ def test_auto_change_type():
     Test that open_device() can automatically change the device's type
     """
     # Opening as SPI -> change type to SPI
-    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.SPI_CONTROLLER):
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER):
         pass
 
     # Opening as I2C -> change type to I2C
-    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.I2C_CONTROLLER):
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER):
         pass
 
     # Opening as UART -> change type to UART
-    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.UART_CDC):
+    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.UART_CDC):
         pass
 
 

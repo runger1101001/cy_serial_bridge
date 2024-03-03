@@ -10,7 +10,7 @@ One disadvantage of the CY7C652xx chips is that their software options are somew
 
 However, the available drivers provide absolutely no provision for reprogramming the "configuration block", the binary structure stored in the chip's flash memory which defines its USB attributes.  This includes manufacturer-set stuff such as the VID, PID, and serial number, but also the flag that tells it whether it should be a UART, I2C, or SPI bridge, and the default settings which are used for each bus type.  The configuration block can only be programmed using the closed-source Cypress USB Serial Configuration Utility (USCU) -- and to add to the pain, this is only available as a Windows GUI application!
 
-This driver is being worked on with the goal of, in addition to providing a translation of the normal C driver into Python, also reverse-engineering the format of the config block and providing utilities to modify and rewrite it.  Basic config rewriting functionality is working, and I have been able to dynamically edit the parameters of a CY7C65211 and change it between I2C, SPI, and UART mode!  Additionally, since the code quality of the libusb1 driver is... not great (it uses multiple threads internally for no good reason I can find), I've been trying to clean up and simplify the way that data is transferred to and from the device.
+This driver is being worked on with the goal of, in addition to providing a translation of the libusb C driver into Python, also reverse-engineering the format of the config block and providing utilities to modify and rewrite it.  Basic config rewriting functionality is working, and I have been able to dynamically edit the parameters of a CY7C65211 and change it between I2C, SPI, and UART mode!  Additionally, since the code quality of the libusb1 driver is... not great (it uses multiple threads internally rather than the libusb asynchronous API), I've been trying to clean up and simplify the way that data is transferred to and from the device.
 
 ### You *should* use this driver if you want to
 - Have a nice Python API for interacting with CY7C652xx bridge chips in UART, I2C, and SPI mode
@@ -18,16 +18,15 @@ This driver is being worked on with the goal of, in addition to providing a tran
 - Use an OS-agnostic CLI and/or Python API to provision CY7C652xx chips with the correct VID, PID, description, and serial number values
 
 ### You should *not* use this driver if you want to
-- Ship an easy solution that works with no additional user setup on Windows machines
-- Just use the serial bridge chip as a plug-and-play COM port (just use USCU to configure it in that case!)
-- Rapidly switch between I2C/SPI/UART modes (it takes almost half a second to reprogram the config block and re-enumerate the device)
-- Do continuous UART transfers (see below)
+- Ship an easy solution that works with no additional user setup on Windows machines (see Windows section below)
+- Just use the serial bridge chip as a USB-UART adapter only (in this case, just use USCU to configure it once and then use a regular serial port library to operate it)
+- Rapidly switch between I2C/SPI/UART modes (it takes up to a few seconds to reprogram the config block and re-enumerate the device)
 
 ## Warnings
 
-This driver is not very well tested yet, and I would advise against relying on it for anything important.  I am testing it only with a CY7C65211 dev kit, and have not tried it with the single-purpose devices or with a dual-channel device like the CY7C65215.  It should work for those devices, but I cannot guarantee anything.
+This driver is not very well tested yet, and I would advise against relying on it for anything important without additional testing.  I am testing it only with a CY7C65211 dev kit, and have not tried it with the single-purpose devices or with a dual-channel device like the CY7C65215.  It should work for those devices, but I cannot guarantee anything.
 
-Additionally, I assume that it would be possible to brick your CY7C652xx by loading an incorrect configuration block onto it.  I would highly recommend doing a load operation first to download the configuration block from your specific model of chip, and then modifying it and writing it back.  Writing back configurations obtained from anywhere else could be a dangerous operation!  I take no responsibility for any chips bricked through usage of this tool.
+Additionally, I assume that it would be possible to brick your CY7C652xx by loading an incorrect configuration block onto it.  Rather than downloading any of the configuration bin files in this repo, I would highly recommend doing a load operation first to download the configuration block from your specific model of chip, and then modifying it and writing it back (this is already how the reconfigure functionality works).  Writing back configurations obtained from anywhere else could be a dangerous operation!  I take no responsibility for any chips bricked through usage of this tool.
 
 ## Functionality
 ### Currently Supported
@@ -47,7 +46,7 @@ Additionally, I assume that it would be possible to brick your CY7C652xx by load
 
 ## Using the Command-Line Interface
 
-This driver installs a command-line interface script, `cy_serial_bridge_cli`.  It supports a number of functions:
+This driver installs a command-line interface script, `cy_serial_cli`.  It supports a number of functions:
 ```
 usage: cy_serial_cli [-h] [-V VID] [-P PID] [-n NTH] [-s SCB] [-v] {scan,save,load,decode,type,reconfigure} ...
 
@@ -95,6 +94,22 @@ Detected Devices:
 - 04b4:e011 (Type: UART_CDC) (SerNo: 14224672048496620243684302669570) (Type: UART_CDC) (Serial Port: 'COM6')
 ```
 
+## Using the Python API
+
+cy_serial_bridge provides a rich Python API that can be used to communicate with the serial bridge in each mode. 
+
+### I2C controller mode
+
+First, you must open the device and set the configuration:
+```python
+import cy_serial_bridge
+
+with cy_serial_bridge.open_device(cy_serial_bridge.DEFAULT_VID, 
+                                  cy_serial_bridge.DEFAULT_PID, 
+                                  cy_serial_bridge.OpenMode.I2C_CONTROLLER) as bridge:
+    bridge.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(frequency=400000))
+```
+
 ## OS-Specific Info
 
 ### Windows
@@ -102,7 +117,9 @@ On Windows, cy_serial_bridge (and other libusb based programs) cannot connect to
 
 To set this up, you will need to use [Zadig](https://zadig.akeo.ie/).  Simply run this program, click "Options > List All Devices" in the menu, find whichever USB devices represent the CY7C652xx (you might have to look at the VID & PID values), and install the WinUSB driver for them.  Note that there will be at least two USB devices in the list for each bridge chip -- one for the communication interface and one for the configuration interface.  You need to install the driver for *both* for this driver to work.
 
-This process might have to be redone the first time that the bridge is used in each mode -- for example, if I connect a CY7C652xx to a fresh machine in SPI mode and install the driver using Zadig, then change the chip to operate in I2C mode in code, I may have to use Zadig again before Python code can open it in I2C mode.  Zadig installation will also have to be redone if the VID or PID is changed, though it should stick for multiple devices in the same mode and with the same VIDs/PIDs.
+This process might have to be redone the first time that the bridge is used in each mode -- for example, if I connect a CY7C652xx to a fresh machine in SPI mode and install the driver using Zadig, then change the chip to operate in I2C mode in code, I may have to use Zadig again before Python code can open it in I2C mode.  Zadig installation will also have to be redone if the VID or PID is changed, though it only has to be done once per machine for a given VID-PID-operation mode combination.
+
+I believe that it would be possible to script this a bit more gracefully, by writing a script to change the serial bridge into each mode and then invoke Zadig for each interface.  This should be looked into more.
 
 Also note that [NirSoft USBLogView](https://www.nirsoft.net/utils/usb_log_view.html) is extremely useful for answering the question of "what are the VID & PID of the USB device I just plugged in".
 
@@ -138,9 +155,8 @@ To determine what the VID and PID of your device currently are, you can use:
 ```shell
 cy_serial_cli scan --all
 ```
-This will do a heuristic search of all the USB devices on your machine to find ones which "look like" CY7C652xx chips based on their descriptor layout.
 
-Also note that adding `--randomize-serno` to that command will assign a random serial number to the chip, which is helpful for provisioning new boards.
+Also note that adding `--randomize-serno` to the reconfigure command will assign a random serial number to the chip, which is helpful for provisioning new boards.
 
 Another issue: On Windows, if you have a given VID and PID assigned to use the WinUSB driver via Zadig, Windows will not try and use the USB CDC driver to enumerate COM ports from the device.  This means that a device in SPI/I2C mode cannot use the same VID and PID as a device in UART CDC mode.  To solve this, this driver automatically uses two PIDs for each device.  The even PID is used in SPI/I2C mode, and the odd PID is used in UART CDC mode.
 

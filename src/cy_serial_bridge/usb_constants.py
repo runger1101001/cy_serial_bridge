@@ -96,6 +96,33 @@ class CyVendorCmds(IntEnum):
 
     CY_DEVICE_RESET_CMD = 0xE3
 
+    # Below constants are documented in the source for the "Linux Configuration Tool"
+    # which can be downloaded here: https://community.infineon.com/t5/USB-low-full-high-speed/CY7C65215-32LTXIT-Linux-Configuration-Tool/td-p/80984
+    # (infineon account required)
+
+    # Enter the configuration mode. This needs to be invoked to enter
+    # the manufacturing mode. If this is not set, then the device shall
+    # not allow any of the configuration requests (B0 to BF) to go through.
+    # Value = ~"CY" = 0xA6BC, index = ~"OF" = 0xB9B0: for disable,
+    # Value = ~"CY" = 0xA6BC, ~"ON" = 0xB1B0: for enable,
+    # Length = 0.
+    CY_VENDOR_ENTER_MFG_MODE = 0xE2
+
+    # Read the device configuration table:
+    # value = 0, index = 0, length = 512;
+    # data_in = device configuration table.
+    CY_BOOT_CMD_READ_CONFIG = 0xB5
+
+    # Program the device configuration table:
+    # value = 0, index = 0, length = 512;
+    # data_out = device configuration table.
+    CY_BOOT_CMD_PROG_CONFIG = 0xB6
+
+    # Get the silicon ID for the device.
+    # value = 0, index = 0, length = 4;
+    # data_in = 32 bit silicon id.
+    CY_BOOT_CMD_GET_SILICON_ID = 0xB1
+
 
 # I2C related macros
 class CyI2c(IntEnum):

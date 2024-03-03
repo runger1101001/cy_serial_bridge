@@ -4,10 +4,10 @@ import sys
 import time
 import typing
 from enum import Enum
-from typing import TYPE_CHECKING, AbstractSet, Union, cast
+from typing import TYPE_CHECKING, Union, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Set
 
 import serial
 import usb1
@@ -34,7 +34,7 @@ def _find_serial_port_name_for_serno(serial_number: str) -> str | None:
 
 
 def list_devices(
-    vid_pids: AbstractSet[tuple[int, int]] | None = DEFAULT_VIDS_PIDS,
+    vid_pids: Set[tuple[int, int]] | None = DEFAULT_VIDS_PIDS,
 ) -> list[DiscoveredDevice]:
     """
     Scan for USB devices which look like they could be CY6C652xx chips based on their USB descriptor layout.
@@ -259,7 +259,9 @@ def _scan_for_device(open_mode: OpenMode, vid: int, pids: set[int], serial_numbe
 AnyDriverClass = Union[driver.CySPIControllerBridge, driver.CyI2CControllerBridge, driver.CyMfgrIface, serial.Serial]
 
 
-def open_device(vid: int, pids: set[int], open_mode: OpenMode, serial_number: str | None = None) -> AnyDriverClass:
+def open_device(
+    vid: int, pids: Union[int, set[int]], open_mode: OpenMode, serial_number: str | None = None
+) -> AnyDriverClass:
     """
     Convenience function for opening a CY7C652xx SCB device in a desired mode.
 
@@ -270,11 +272,17 @@ def open_device(vid: int, pids: set[int], open_mode: OpenMode, serial_number: st
     will be considered.  This is to support UART CDC mode (see the README)
 
     :param vid: Vendor ID of the device you want to open
-    :param pids: Product IDs of the device you want to open
+    :param pids: Product IDs of the device you want to open.  Accepts either a single integer or a set of ints
     :param serial_number: Serial number of the device you want to open.  May be left as None if there is only one device attached.
     :param open_mode: Mode to open the SCB device in
     """
     # Step 1: Search for matching devices on the system
+    if type(pids) is int:
+        pids = {pids}
+
+    # pids will always be a set[int] at this point but mypy can't seem to figure that out
+    pids = cast(set[int], pids)
+
     device_to_open = _scan_for_device(open_mode, vid, pids, serial_number)
 
     # Step 2: Change type of the device, if needed

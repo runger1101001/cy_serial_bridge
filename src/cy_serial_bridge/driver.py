@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from math import ceil
-from typing import TYPE_CHECKING, Tuple, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -236,7 +236,7 @@ class CySerBridgeBase:
         #
         # } CY_FIRMWARE_VERSION, *PCY_FIRMWARE_VERSION;
 
-        return cast(Tuple[int, int, int, int], struct.unpack("<BBHI", firmware_version_bytes))
+        return cast(tuple[int, int, int, int], struct.unpack("<BBHI", firmware_version_bytes))
 
     def get_signature(self) -> ByteSequence:
         """
@@ -374,9 +374,9 @@ class CyMfgrIface(CySerBridgeBase):
         return cast(int, self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout))
 
     def probe0(self) -> int:
-        """Send whatever USCU sends on startup - some signature?"""
+        """Send whatever USCU sends on startup - get silicon ID as we found out"""
         bm_request_type = CY_VENDOR_REQUEST | EP_IN
-        bm_request = 177
+        bm_request = CyVendorCmds.CY_BOOT_CMD_GET_SILICON_ID
         w_value = 0
         w_index = 0
         w_length = 4
@@ -387,9 +387,11 @@ class CyMfgrIface(CySerBridgeBase):
     # getting the firmware version (equivalent to get_firmware_version())
 
     def connect(self) -> int:
-        """Send whatever USCU sends on connect"""
+        """
+        Enter manufacturing mode, allowing the configuration block to be accessed and reprogrammed.
+        """
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
-        bm_request = 226
+        bm_request = CyVendorCmds.CY_VENDOR_ENTER_MFG_MODE
         w_value = 0xA6BC
         w_index = 0xB1B0
         w_buffer = bytearray(0)
@@ -397,9 +399,11 @@ class CyMfgrIface(CySerBridgeBase):
         return cast(int, self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout))
 
     def disconnect(self) -> int:
-        """Send whatever USCU sends on disconnect"""
+        """
+        Exit manufacturing mode, blocking updates to memory.
+        """
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
-        bm_request = 226
+        bm_request = CyVendorCmds.CY_VENDOR_ENTER_MFG_MODE
         w_value = 0xA6BC
         w_index = 0xB9B0
         w_buffer = bytearray(0)
@@ -407,9 +411,13 @@ class CyMfgrIface(CySerBridgeBase):
         return cast(int, self.dev.controlWrite(bm_request_type, bm_request, w_value, w_index, w_buffer, self.timeout))
 
     def read_config(self) -> ByteSequence:
-        """Send whatever USCU sends on config read"""
+        """
+        Read the configuration block from the device.
+
+        connect() must be called first.
+        """
         bm_request_type = CY_VENDOR_REQUEST | EP_IN
-        bm_request = 181
+        bm_request = CyVendorCmds.CY_BOOT_CMD_READ_CONFIG
         w_value = 0
         w_index = 0
         w_length = 512
@@ -419,9 +427,13 @@ class CyMfgrIface(CySerBridgeBase):
         )
 
     def write_config(self, config: ConfigurationBlock) -> int:
-        """Send whatever USCU sends on config write"""
+        """
+        Write the configuration block to the device.
+
+        connect() must be called first.
+        """
         bm_request_type = CY_VENDOR_REQUEST | EP_OUT
-        bm_request = 182
+        bm_request = CyVendorCmds.CY_BOOT_CMD_PROG_CONFIG
         w_value = 0
         w_index = 0
 
