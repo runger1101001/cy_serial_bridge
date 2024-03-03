@@ -48,37 +48,44 @@ Additionally, I assume that it would be possible to brick your CY7C652xx by load
 
 This driver installs a command-line interface script, `cy_serial_cli`.  It supports a number of functions:
 ```
-usage: cy_serial_cli [-h] [-V VID] [-P PID] [-n NTH] [-s SCB] [-v] {scan,save,load,decode,type,reconfigure} ...
+ Usage: cy_serial_cli [OPTIONS] COMMAND [ARGS]...
 
-positional arguments:
-  {scan,save,load,decode,type,reconfigure}
-    scan                Scan for USB devices which look like CY7C652xx serial bridges
-    save                Save configuration block from connected device to bin file
-    load                Load configuration block to connected device from bin file
-    decode              Decode and display basic information from configuration block bin file
-    type                Set the type of device that the serial bridge acts as. Used for configurable bridge devices (65211/65215)
-    reconfigure         Change configuration of the connected device via the CLI
+ Cypress serial bridge CLI -- reprogram and communicate with CY7C652xx
 
-options:
-  -h, --help            show this help message and exit
-  -V VID, --vid VID     VID of device to connect (default 0x04b4)
-  -P PID, --pid PID     PID of device to connect (default 0xe010)
-  -n NTH, --nth NTH     Select Nth device (default 0)
-  -s SCB, --scb SCB     Select Nth SCB block (default 0). Used for dual channel chips only.
-  -v, --verbose         Enable verbose logging
-
+┌─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ --vid                 -V      INTEGER                          VID of device to connect [default: 0x04b4]                                                          │
+│ --pid                 -P      INTEGER                          PID of device to connect [default: 0xe010]                                                          │
+│ --serno               -S      TEXT                             Serial number string of of device to connect. [default: None]                                       │
+│ --scb                 -s      INTEGER RANGE [0<=x<=1]          SCB channel to use.  For dual channel devices only. [default: 0]                                    │
+│ --verbose             -v                                       Enable verbose logging                                                                              │
+│ --install-completion          [bash|zsh|fish|powershell|pwsh]  Install completion for the specified shell. [default: None]                                         │
+│ --show-completion             [bash|zsh|fish|powershell|pwsh]  Show completion for the specified shell, to copy it or customize the installation. [default: None]  │
+│ --help                                                         Show this message and exit.                                                                         │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Commands ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ change-type        Set the type of device that the serial bridge acts as.  For configurable bridge devices (65211/65215)                                           │
+│ decode             Decode and display basic information from configuration block bin file                                                                          │
+│ load               Load configuration block to connected device from bin file                                                                                      │
+│ reconfigure        Change configuration of the connected device via the CLI                                                                                        │
+│ save               Save configuration block from connected device to bin file                                                                                      │
+│ scan               Scan for USB devices which look like CY7C652xx serial bridges                                                                                   │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Changing Settings
 The `reconfigure` subcommand can be used to edit settings of a connected device, then write those settings back.  The options you pass tell it what to reconfigure:
 ```
-usage: cy_serial_cli reconfigure [-h] [--randomize-serno] [--set-vid SET_VID] [--set-pid SET_PID]
+ Usage: cy_serial_cli reconfigure [OPTIONS]
 
-options:
-  -h, --help         show this help message and exit
-  --randomize-serno  Set the serial number of the device to a random value.
-  --set-vid SET_VID  Set the USB Vendor ID to a given value. Needs a 0x prefix for hex values!
-  --set-pid SET_PID  Set the USB Product ID to a given value. Needs a 0x prefix for hex values!
+ Change configuration of the connected device via the CLI
+
+┌─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ --randomize-serno                 Set the serial number of the device to a random value.                                                                           │
+│ --set-serno              TEXT     Set the serial number of the device. [default: None]                                                                             │
+│ --set-vid                INTEGER  Set the USB Vendor ID to a given value.  Needs a 0x prefix for hex values! [default: None]                                       │
+│ --set-pid                INTEGER  Set the USB Product ID to a given value.  Needs a 0x prefix for hex values! [default: None]                                      │
+│ --help                            Show this message and exit.                                                                                                      │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Additionally, the `type` subcommand can be used to change the device's type.  However, this is mostly for debugging and for using the serial bridge with other programs, because the type is changed automatically when you open the device in SPI, I2C, or UART mode.
@@ -91,8 +98,34 @@ For each detected device, the serial number, type, and (if in UART CDC mode) the
 ```
 > cy_serial_cli scan --all
 Detected Devices:
-- 04b4:e011 (Type: UART_CDC) (SerNo: 14224672048496620243684302669570) (Type: UART_CDC) (Serial Port: 'COM6')
+- 04b4:e010 (Type: SPI) (SerNo: Testing1) (Name: Cypress Semiconductor Mbed CE CY7C65211)
 ```
+
+
+### Doing I2C Transactions
+
+For simple testing, cy_serial_cli implements commands to do I2C reads and writes.  These should be very convenient for board bring-up type tasks, though for more complex tasks it is highly recommended to use the Python API instead (see below).
+
+For example, we can write some data to the EEPROM on the eval kit:
+```
+$ cy_serial_cli i2c-write 0x51 "001001020304"
+Connected to I2C interface of CY7C652xx device, firmware version 1.0.3 build 78
+Writing b'\x00\x10\x01\x02\x03\x04' to address 0x51
+Done.
+```
+
+And then read it back (we have to reset the write pointer back to address 0x10 first):
+```
+$ cy_serial_cli i2c-write 0x51 "0010"        
+Connected to I2C interface of CY7C652xx device, firmware version 1.0.3 build 78
+Writing b'\x00\x10' to address 0x51
+Done.
+$ cy_serial_cli i2c-read 0x51 4      
+Connected to I2C interface of CY7C652xx device, firmware version 1.0.3 build 78
+Read from address 0x51: 01020304
+```
+
+As you can see, we were able to read the same byte pattern (01 02 03 04) that we had just written!
 
 ## Using the Python API
 
@@ -109,6 +142,22 @@ with cy_serial_bridge.open_device(cy_serial_bridge.DEFAULT_VID,
                                   cy_serial_bridge.OpenMode.I2C_CONTROLLER) as bridge:
     bridge.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(frequency=400000))
 ```
+
+(note that per the datasheet, the CY7C65211 supports I2C frequencies between 1kHz and 400kHz)
+
+From here, you can use the i2c_write() and i2c_read() functions to send and receive data via the bridge.  For example, to read data from the EEPROM on the CY7C65211 eval board, one might do something like:
+```python
+addr_to_read = 0x0010
+num_bytes_to_read = 10
+bridge.i2c_write(0x51, bytes([(addr_to_read >> 8) & 0xFF, addr_to_read & 0xFF]), relinquish_bus=False)
+read_data = bridge.i2c_read(0x51, num_bytes_to_read)
+```
+
+(note: if running this example on the eval board, be careful that the jumpers are set in the I2C position.  Otherwise, the USB operation seems to hang forever -- perhaps the serial bridge is waiting for the I2C lines to go high before initiating the transaction?)
+
+If a NACK occurs during the operation, an exception of type cy_serial_bridge.I2CNACKError will be thrown.
+
+Note: There appears to be a bug with the chip where I2C writes (and reads?) of only 1 byte always indicate success even if the hardware NACKed.  Also, it's unclear what the hardware does if given a 0 length read/write.  Clearly more testing is required here, and it's unclear if the newer -A revision of the part fixes some of these issues (the eval board comes with the old revision).
 
 ## OS-Specific Info
 

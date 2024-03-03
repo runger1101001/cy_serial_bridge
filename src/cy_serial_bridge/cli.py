@@ -1,3 +1,4 @@
+import binascii
 import dataclasses
 import logging
 import pathlib
@@ -14,7 +15,9 @@ import cy_serial_bridge
 from cy_serial_bridge.usb_constants import DEFAULT_PID, DEFAULT_VID
 from cy_serial_bridge.utils import log
 
-app = typer.Typer(help="Cypress serial bridge CLI -- reprogram and communicate with CY7C652xx")
+app = typer.Typer(
+    help="Cypress Serial Bridge CLI -- reconfigure CY7C652xx serial bridge chips and use them to communicate over UART/I2C/SPI"
+)
 
 
 # Global options (passed before the subcommand)
@@ -47,14 +50,14 @@ def parse_vid_pid(value: str | int | None) -> int | None:
 VIDOption = typer.Option(
     "-V",
     "--vid",
-    callback=parse_vid_pid,
+    parser=parse_vid_pid,
     help=f"VID of device to connect [default: 0x{DEFAULT_VID:04x}]",
     show_default=False,
 )
 PIDOption = typer.Option(
     "-P",
     "--pid",
-    callback=parse_vid_pid,
+    parser=parse_vid_pid,
     help=f"PID of device to connect [default: 0x{DEFAULT_PID:04x}]",
     show_default=False,
 )
@@ -255,7 +258,7 @@ TypeArgument = typer.Argument(
 
 
 @app.command(
-    help="Set the type of device that the serial bridge acts as.  For configurable bridge devices (65211/65215)"
+    help="Set the type of device that the serial bridge acts as (I2C/SPI/UART).  For configurable bridge devices (65211/65215) only."
 )
 def change_type(type: Annotated[str, TypeArgument]) -> None:  # noqa: A002
     cy_type = cy_serial_bridge.CyType[type]
@@ -345,6 +348,96 @@ def scan(scan_all: Annotated[bool, ScanAllOption] = False) -> None:
                 if device.serial_port_name is not None:
                     rich.print(f" ([bold]Serial Port:[/bold] '{device.serial_port_name}')", end="")
                 rich.print("")
+
+
+# I2C write & read commands
+# ---------------------------------------------------------------------------------------------
+
+
+def parse_i2c_addr(value: str) -> int:
+    try:
+        val_int = int(value, 0)
+    except ValueError:
+        message = "I2C address must be an integer"
+        raise typer.BadParameter(message) from None
+
+    if val_int < 0 or val_int > 0x7F:
+        message = "I2C address must be between 0 and 0x7F"
+        raise typer.BadParameter(message)
+
+    return val_int
+
+
+PeriphAddrArgument = typer.Argument(
+    help="7-bit address of the I2C peripheral.  Don't forget a 0x prefix!", parser=parse_i2c_addr, show_default=False
+)
+I2CWriteDataArgument = typer.Argument(
+    help="Data to write to the peripheral.  Must be a string in hex format, e.g. '0abc'."
+)
+FreqOption = typer.Option(
+    "--frequency",
+    "-f",
+    min=cy_serial_bridge.CyI2c.MIN_FREQUENCY,
+    max=cy_serial_bridge.CyI2c.MAX_FREQUENCY,
+    help="I2C frequency to use, in Hz.",
+)
+
+
+@app.command(help="Perform a write to an I2C peripheral")
+def i2c_write(
+    periph_addr: Annotated[int, PeriphAddrArgument],
+    data_to_write: Annotated[str, I2CWriteDataArgument] = "",
+    freq: Annotated[int, FreqOption] = cy_serial_bridge.CyI2c.MAX_FREQUENCY.value,
+) -> None:
+    with cast(
+        cy_serial_bridge.driver.CyI2CControllerBridge,
+        cy_serial_bridge.open_device(
+            global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.I2C_CONTROLLER, global_opt.serial_number
+        ),
+    ) as bridge:
+        bridge.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(frequency=freq))
+
+        # Convert data_to_write into bytes
+        data_bytes = binascii.a2b_hex(data_to_write)
+        print(f"Writing {data_bytes!r} to address 0x{periph_addr:02x}")
+
+        # Do the write
+        try:
+            bridge.i2c_write(periph_addr=periph_addr, data=data_bytes)
+        except cy_serial_bridge.I2CNACKError:
+            print("NACK received")
+            sys.exit(1)
+
+    print("Done.")
+
+
+BytesToReadOption = typer.Argument(min=1, help="Number of bytes to read from the peripheral")
+
+
+@app.command(help="Perform a read from an I2C peripheral")
+def i2c_read(
+    periph_addr: Annotated[int, PeriphAddrArgument],
+    bytes_to_read: Annotated[int, BytesToReadOption],
+    freq: Annotated[int, FreqOption] = cy_serial_bridge.CyI2c.MAX_FREQUENCY.value,
+) -> None:
+    with cast(
+        cy_serial_bridge.driver.CyI2CControllerBridge,
+        cy_serial_bridge.open_device(
+            global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.I2C_CONTROLLER, global_opt.serial_number
+        ),
+    ) as bridge:
+        bridge.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(frequency=freq))
+
+        # Do the read
+        try:
+            result = bridge.i2c_read(periph_addr=periph_addr, size=bytes_to_read)
+        except cy_serial_bridge.I2CNACKError:
+            print("NACK received")
+            sys.exit(1)
+
+        # Display result as an ASCII string
+        data_bytes = binascii.b2a_hex(result).decode("ASCII")
+        print(f"Read from address 0x{periph_addr:02x}: {data_bytes}")
 
 
 def main() -> None:

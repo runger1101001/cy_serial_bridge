@@ -142,6 +142,9 @@ class CyI2c(IntEnum):
     EVENT_NOTIFICATION_LEN = 3
     MAX_VALID_ADDRESS = 0x7F
 
+    MIN_FREQUENCY = 1000
+    MAX_FREQUENCY = 400000
+
 
 # SPI related Macros
 class CySpi(IntEnum):

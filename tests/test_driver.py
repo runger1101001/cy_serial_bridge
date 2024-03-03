@@ -233,7 +233,9 @@ def test_i2c_read_write():
         time.sleep(0.01)  # EEPROM needs at least 5ms page program time before it can respond again
 
         # Reset address pointer
-        dev.i2c_write(EEPROM_I2C_ADDRESS, bytes([(eeprom_address >> 8) & 0xFF, eeprom_address & 0xFF]))
+        dev.i2c_write(
+            EEPROM_I2C_ADDRESS, bytes([(eeprom_address >> 8) & 0xFF, eeprom_address & 0xFF]), relinquish_bus=False
+        )
 
         # Read data back
         read_data = dev.i2c_read(EEPROM_I2C_ADDRESS, len(eeprom_message))

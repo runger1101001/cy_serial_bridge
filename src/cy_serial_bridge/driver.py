@@ -579,6 +579,11 @@ class CyI2CControllerBridge(CySerBridgeBase):
         """
         self._curr_frequency = config.frequency
 
+        # Per the datasheet, the frequency has to be between 1kHz and 400kHz
+        if config.frequency < CyI2c.MIN_FREQUENCY or config.frequency > CyI2c.MAX_FREQUENCY:
+            message = "Invalid frequency!"
+            raise ValueError(message)
+
         binary_configuration = struct.pack(
             CY_USB_I2C_CONFIG_STRUCT_LAYOUT,
             config.frequency,
@@ -626,6 +631,10 @@ class CyI2CControllerBridge(CySerBridgeBase):
         Perform an I2C read from the given peripheral device.
 
         If the device does not acknowledge the read, an I2CNACKError will be raised.
+
+        Note: Unlike write operations, the peripheral cannot NACK a read after the address byte
+        has been ACKed.  So read operations are always all-or-nothing at the electrical level:
+        either all the data is read, or none of it is.
 
         :param periph_addr: 7-bit I2C address of the peripheral to read from
         :param size: Number of bytes to read
