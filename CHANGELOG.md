@@ -48,6 +48,21 @@ Lorem Ipsum dolor sit amet.
 
 _______________________________________________________________________________
 
+## [0.2.0] - 2024-03-03
+
+I2C and CLI update!
+
+### Added
+
+- I2C API is now documented
+- Added new `cy_serial_cli i2c-write` and `cy_serial_cli i2c-read` commands, which allow doing simple I2C transactions directly from the command line
+
+### Changed
+
+- CLI now uses typer instead of argparse.  Besides making it look cooler, this improves type safety and adds some much more understandable exception handlers for the CLI.
+
+_______________________________________________________________________________
+
 ## [0.1.0] - 2024-02-25
 
 Initial release.  
