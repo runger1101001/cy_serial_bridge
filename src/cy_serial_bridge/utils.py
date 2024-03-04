@@ -4,7 +4,7 @@ import collections.abc
 import dataclasses
 import logging
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     import usb1
@@ -19,7 +19,7 @@ Module with basic definitions used by multiple cy_serial_bridge modules.
 if sys.version_info < (3, 12):
     ByteSequence = collections.abc.ByteString
 else:
-    ByteSequence = collections.abc.Buffer
+    ByteSequence = Union[bytes, bytearray, memoryview]
 
 # Logger for the package
 log = logging.getLogger("cy_serial_bridge")

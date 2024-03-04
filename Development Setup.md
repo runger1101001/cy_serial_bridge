@@ -25,5 +25,7 @@ poetry run ruff format .
 poetry run pytest -v --capture=no --log-cli-level=INFO tests/
 ```
 
+Note that this command has to be run with `sudo` on MacOS, see the README for details.
+
 ### Uploading to PyPi
 Pypy uploads will be generated automatically for releases tagged with a "vA.B.C" tag (e.g v0.1.0).

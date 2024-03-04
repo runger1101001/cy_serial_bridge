@@ -82,6 +82,20 @@ class CySerBridgeBase:
         self.ep_in = None
         self.ep_out = None
 
+        if (
+            self.cy_type == CyType.MFG
+            and self.discovered_dev.curr_cytype == CyType.UART_CDC
+            and sys.platform == "darwin"
+        ):
+            import os
+
+            if os.geteuid() != 0:
+                message = (
+                    "Access to the manufacturer interface of a device in UART CDC mode on MacOS requires elevation. "
+                    "Try rerunning the command with sudo.  See the cy_serial_bridge README for details."
+                )
+                raise CySerialBridgeError(message)
+
         if self.cy_type != CyType.MFG:
             if self.discovered_dev.scb_interface_settings is None:
                 message = "Opening this CyType requires an SCB interface to be present on the USB device"

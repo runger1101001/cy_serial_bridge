@@ -164,9 +164,9 @@ Note: There appears to be a bug with the chip where I2C writes (and reads?) of o
 ### Windows
 On Windows, cy_serial_bridge (and other libusb based programs) cannot connect to USB devices unless they have the "WinUSB" driver attached to them.
 
-To set this up, you will need to use [Zadig](https://zadig.akeo.ie/).  Simply run this program, click "Options > List All Devices" in the menu, find whichever USB devices represent the CY7C652xx (you might have to look at the VID & PID values), and install the WinUSB driver for them.  Note that there will be at least two USB devices in the list for each bridge chip -- one for the communication interface and one for the configuration interface.  You need to install the driver for *both* for this driver to work.
+To set this up, you will need to use [Zadig](https://zadig.akeo.ie/).  Simply run this program, click "Options > List All Devices" in the menu, find whichever USB devices represent the CY7C652xx (you might have to look at the VID & PID values), and install the WinUSB driver for them.  Note that there will be at least two USB devices in the list for each bridge chip -- one for the communication interface and one for the configuration interface.  You need to install the driver for *both* for cy_serial_bridge to work.
 
-This process might have to be redone the first time that the bridge is used in each mode -- for example, if I connect a CY7C652xx to a fresh machine in SPI mode and install the driver using Zadig, then change the chip to operate in I2C mode in code, I may have to use Zadig again before Python code can open it in I2C mode.  Zadig installation will also have to be redone if the VID or PID is changed, though it only has to be done once per machine for a given VID-PID-operation mode combination.
+This process might have to be redone the first time that the bridge is used in each mode -- for example, if I connect a CY7C65211 to a fresh machine in SPI mode and install the driver using Zadig, then change the chip to operate in I2C mode in code, I may have to use Zadig again before Python code can open it in I2C mode.  Zadig installation will also have to be redone if the VID or PID is changed, though it only has to be done once per machine for a given VID-PID-operation mode combination.
 
 I believe that it would be possible to script this a bit more gracefully, by writing a script to change the serial bridge into each mode and then invoke Zadig for each interface.  This should be looked into more.
 
@@ -187,7 +187,16 @@ $ sudo usermod -a -G plugdev <your username>
 
 This should allow you to access the serial bridge chip without any special privileges.  
 
-Note, however, that the rules file is written for the driver default VID and PID values (see "Setting Up New Devices").  If your device is using different VID & PID values (e.g. a factory new chip), you will need to update the rules file or temporarily run as root.
+Note, however, that the rules file is written for the driver default VID and PID values (see "Setting Up New Devices").  If your device is using different VID & PID values, you will need to update the rules file or temporarily run as root.
+
+### Mac
+Using this library on a mac is simpler in many ways, because MacOS does not require any kind of permission or driver setup before you can use the serial bridge.  You basically just plug it in and it works.  Almost.
+
+Nearly everything will work out of the box, but there is one operation that will cause trouble: changing the configuration or type of a serial bridge which is currently configured as UART_CDC.  To do this, cy_serial_bridge needs to connect to the manufacturer interface of the USB device.  However, when in UART CDC mode, there will be a kernel driver attached to this interface which is providing the CDC USB serial port.  This kernel driver needs to be detached in order for cy_serial_bridge to claim the CY7C652xx device and change its configuration.
+
+Ordinarily, libusb automatically handles detaching the kernel driver on most OSs, including MacOS.  However, Apple decided to [restrict](https://github.com/libusb/libusb/wiki/FAQ#how-can-i-run-libusb-applications-under-mac-os-x-if-there-is-already-a-kernel-extension-installed-for-the-device-and-claim-exclusive-access) this API to processes with root permissions unless your code has a special type of certificate, one which they [don't even give out](https://github.com/libusb/libusb/issues/1014) to ordinary registered developers!
+
+So, it is currently impossible for cy_serial_bridge to reconfigure a device set to UART_CDC mode unless the Python process is run as root.  Note that this only applies to reconfiguring the serial bridge when in UART CDC mode; you do not have to be root to send/receive data with the serial bridge in UART or any other mode.
 
 ## Setting Up New Devices
 When new CY76C65211 devices arrive, and you use USCU to configure them, they will get the Cypress VID (0x4b4), and can end up with one of several PID values (e.g. 0x0003, 0x0004, etc) depending on what model of chip they are and what mode they are configured as (I2C, SPI, etc).  
@@ -205,7 +214,7 @@ To determine what the VID and PID of your device currently are, you can use:
 cy_serial_cli scan --all
 ```
 
-Also note that adding `--randomize-serno` to the reconfigure command will assign a random serial number to the chip, which is helpful for provisioning new boards.
+Also note that adding `--randomize-serno` or `--set-serno` can be added to the reconfigure command to change the serial number of the chip, which is helpful for provisioning new boards.
 
 Another issue: On Windows, if you have a given VID and PID assigned to use the WinUSB driver via Zadig, Windows will not try and use the USB CDC driver to enumerate COM ports from the device.  This means that a device in SPI/I2C mode cannot use the same VID and PID as a device in UART CDC mode.  To solve this, this driver automatically uses two PIDs for each device.  The even PID is used in SPI/I2C mode, and the odd PID is used in UART CDC mode.
 
