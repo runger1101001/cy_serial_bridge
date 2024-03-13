@@ -178,6 +178,10 @@ class CyUart(IntEnum):
     SERIAL_STATE_PARITY_ERROR = 1 << 5
     SERIAL_STATUE_OVERRUN = 1 << 6
 
+    # Reference:
+    # https://community.infineon.com/t5/Knowledge-Base-Articles/Non-Standard-Baud-Rates-in-USB-Serial-Bridge-Controllers/ta-p/249181
+    MAX_BAUDRATE = 3000000
+
 
 # Bootloader related macros
 CY_BOOT_CONFIG_SIZE = 64

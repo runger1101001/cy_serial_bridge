@@ -127,6 +127,15 @@ Read from address 0x51: 01020304
 
 As you can see, we were able to read the same byte pattern (01 02 03 04) that we had just written!
 
+### Accessing the Serial Port
+
+To use the bridge in UART CDC mode, cy_serial_bridge provides the `serial-term` command.  This is a wrapper around the miniterm terminal from the `serial` package.  Running this command will switch the selected device to UART_CDC mode and then open an interactive terminal for it: 
+```shell
+$ python3 -m cy_serial_bridge.cli serial-term                                                                                       
+--- Miniterm on COM7  115200,8,N,1 ---
+--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H ---
+```
+
 ## Using the Python API
 
 cy_serial_bridge provides a rich Python API that can be used to communicate with the serial bridge in each mode. 
@@ -158,6 +167,24 @@ read_data = bridge.i2c_read(0x51, num_bytes_to_read)
 If a NACK occurs during the operation, an exception of type cy_serial_bridge.I2CNACKError will be thrown.
 
 Note: There appears to be a bug with the chip where I2C writes (and reads?) of only 1 byte always indicate success even if the hardware NACKed.  Also, it's unclear what the hardware does if given a 0 length read/write.  Clearly more testing is required here, and it's unclear if the newer -A revision of the part fixes some of these issues (the eval board comes with the old revision).
+
+### UART CDC mode
+
+In UART CDC mode, the serial bridge acts as a standard USB-serial converter.  Luckily, Python already has the pyserial library to interact with such devices.  So, when you open a device in UART_CDC mode, you get back a `serial.Serial` instance that you can use as you would any serial port.
+
+```python
+import cy_serial_bridge
+with cy_serial_bridge.open_device(cy_serial_bridge.DEFAULT_VID, 
+                                  cy_serial_bridge.DEFAULT_PID, 
+                                  cy_serial_bridge.OpenMode.UART_CDC) as bridge:
+    bridge.baudrate = 115200
+    bridge.timeout = 0.1
+    
+    bridge.write(b"Hello world!")
+    response = bridge.read(10)
+```
+
+See the [pyserial docs](https://pythonhosted.org/pyserial/pyserial_api.html#serial.Serial) for more information about how to use the Serial class.
 
 ## OS-Specific Info
 

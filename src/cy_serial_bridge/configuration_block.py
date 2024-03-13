@@ -233,6 +233,10 @@ class ConfigurationBlock:
 
         May be set to None, indicating that the field is unset.
         The serial number, according the config utility, may only be set to alphabetic and numeric characters.
+
+        Warning: Some contexts (looking at you, Win32 API) do not preserve the case of the USB serial number.
+        So it is strongly recommended to not have two devices whose serial numbers differ only by case, or
+        cy_serial_bridge may not be able to distinguish between them in some situations.
         """
         return self._decode_string_field(0xA8, 0x172)
 

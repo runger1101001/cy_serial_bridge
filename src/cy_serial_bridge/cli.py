@@ -1,5 +1,6 @@
 import binascii
 import dataclasses
+import enum
 import logging
 import pathlib
 import random
@@ -8,8 +9,10 @@ from typing import Annotated, Optional, cast
 
 import click
 import rich
+import serial
 import typer
 import usb1
+from serial.tools import miniterm
 
 import cy_serial_bridge
 from cy_serial_bridge.usb_constants import DEFAULT_PID, DEFAULT_VID
@@ -438,6 +441,68 @@ def i2c_read(
         # Display result as an ASCII string
         data_bytes = binascii.b2a_hex(result).decode("ASCII")
         print(f"Read from address 0x{periph_addr:02x}: {data_bytes}")
+
+# serial-term command
+# ---------------------------------------------------------------------------------------------
+
+
+class EndOfLineType(str, enum.Enum):
+    """
+    Enum of line ending options supported by Miniterm
+    """
+    LF = "lf",
+    CRLF = "crlf",
+    CR = "cr"
+
+
+# We try to ape some of miniterm's more common command line options, though it's not a complete list.
+BaudrateOption = typer.Option("-b", "--baudrate", help="Serial baudrate.", max=cy_serial_bridge.CyUart.MAX_BAUDRATE.value)
+EOLOption = typer.Option("--eol", help="End-of-line type to use", case_sensitive=False)
+
+
+@app.command(help="Access a serial terminal for a serial bridge in UART CDC mode")
+def serial_term(baudrate: Annotated[int, BaudrateOption] = 115200,
+                eol: Annotated[EndOfLineType, EOLOption] = EndOfLineType.CRLF):
+
+    # Briefly open the serial bridge in UART CDC mode just to get it converted to the right mode
+    with cast(
+            serial.Serial,
+            cy_serial_bridge.open_device(
+                global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.UART_CDC, global_opt.serial_number
+            ),
+    ) as serial_instance:
+
+        serial_instance.baudrate = baudrate
+
+        # Below is based on the logic in serial.tools.miniterm.main().
+        # For now I have converted most of the arguments to hardcoded values
+        # but they could be re-added to the argument parsing later...
+        term = miniterm.Miniterm(
+            serial_instance,
+            echo=False,
+            eol=eol.value,
+            filters=[])
+        term.exit_character = chr(0x1d)  # GS/CTRL+]
+        term.menu_character = chr(0x14)  # Menu: CTRL+T
+        term.set_rx_encoding('UTF-8')
+        term.set_tx_encoding('UTF-8')
+
+        sys.stderr.write('--- Miniterm on {p.name}  {p.baudrate},{p.bytesize},{p.parity},{p.stopbits} ---\n'.format(
+            p=term.serial))
+        sys.stderr.write('--- Quit: {} | Menu: {} | Help: {} followed by {} ---\n'.format(
+            miniterm.key_description(term.exit_character),
+            miniterm.key_description(term.menu_character),
+            miniterm.key_description(term.menu_character),
+            miniterm.key_description('\x08')))
+
+        term.start()
+        try:
+            term.join(True)
+        except KeyboardInterrupt:
+            pass
+        sys.stderr.write('\n--- exit ---\n')
+        term.join()
+        term.close()
 
 
 def main() -> None:

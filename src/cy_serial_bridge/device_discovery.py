@@ -27,7 +27,9 @@ def _find_serial_port_name_for_serno(serial_number: str) -> str | None:
     """
     serial_port_generator: Generator[list_ports_common.ListPortInfo, None, None] = list_ports.comports()
     for serial_port in serial_port_generator:
-        if serial_port.serial_number == serial_number:
+        # Note: Testing on Windows, the serial number always gets converted to uppercase.
+        # So we have to lowercase both values before comparing them.
+        if serial_port.serial_number.lower() == serial_number.lower():
             return cast(str, serial_port.device)
 
     return None
@@ -187,13 +189,23 @@ class OpenMode(Enum):
 CHANGE_TYPE_TIMEOUT = 10.0  # s
 
 
-def _scan_for_device(open_mode: OpenMode, vid: int, pids: set[int], serial_number: str | None) -> DiscoveredDevice:
+def scan_for_device(vid: int, pids: Union[int, set[int]], open_mode: OpenMode, serial_number: str | None = None) -> DiscoveredDevice:
     """
-    Helper function for open_scb_device().
-
     Lists all devices on the system, and then tries to find a match for the given vid, pid, and serial number.
-    If no match is found, throws an exception containing the reason.
+    If no or multiple matches are found, throws an exception containing the reason.
+
+    :param open_mode: Mode to open the SCB device in
+    :param vid: Vendor ID of the device you want to open
+    :param pids: Product IDs of the device you want to open.  Accepts either a single integer or a set of ints
+    :param serial_number: Serial number of the device you want to open.  May be left as None if there is only one device attached.
     """
+
+    if type(pids) is int:
+        pids = {pids}
+
+    # pids will always be a set[int] at this point but mypy can't seem to figure that out
+    pids = cast(set[int], pids)
+
     devices = list_devices({(vid, pid) for pid in pids})
 
     # print("Scan results:" + str(devices))
@@ -283,7 +295,7 @@ def open_device(
     # pids will always be a set[int] at this point but mypy can't seem to figure that out
     pids = cast(set[int], pids)
 
-    device_to_open = _scan_for_device(open_mode, vid, pids, serial_number)
+    device_to_open = scan_for_device(vid, pids, open_mode, serial_number)
 
     # Step 2: Change type of the device, if needed
     needed_cytype: CyType | None = open_mode.value[0]
@@ -302,7 +314,7 @@ def open_device(
         # Wait for the device to re-enumerate with the new type
         while True:
             try:
-                device_to_open = _scan_for_device(open_mode, vid, pids, serial_number)
+                device_to_open = scan_for_device(vid, pids, open_mode, serial_number)
 
                 # log.debug(f"Scan found a device with CyType {device_to_open.curr_cytype}")
 
