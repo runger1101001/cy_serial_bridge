@@ -27,10 +27,11 @@ def _find_serial_port_name_for_serno(serial_number: str) -> str | None:
     """
     serial_port_generator: Generator[list_ports_common.ListPortInfo, None, None] = list_ports.comports()
     for serial_port in serial_port_generator:
-        # Note: Testing on Windows, the serial number always gets converted to uppercase.
-        # So we have to lowercase both values before comparing them.
-        if serial_port.serial_number.lower() == serial_number.lower():
-            return cast(str, serial_port.device)
+        if serial_port.serial_number is not None:
+            # Note: Testing on Windows, the serial number always gets converted to uppercase.
+            # So we have to lowercase both values before comparing them.
+            if serial_port.serial_number.lower() == serial_number.lower():
+                return cast(str, serial_port.device)
 
     return None
 
@@ -189,9 +190,12 @@ class OpenMode(Enum):
 CHANGE_TYPE_TIMEOUT = 10.0  # s
 
 
-def scan_for_device(vid: int, pids: Union[int, set[int]], open_mode: OpenMode, serial_number: str | None = None) -> DiscoveredDevice:
+def scan_for_device(
+    vid: int, pids: Union[int, set[int]], open_mode: OpenMode, serial_number: str | None = None
+) -> DiscoveredDevice:
     """
     Lists all devices on the system, and then tries to find a match for the given vid, pid, and serial number.
+
     If no or multiple matches are found, throws an exception containing the reason.
 
     :param open_mode: Mode to open the SCB device in
@@ -199,7 +203,6 @@ def scan_for_device(vid: int, pids: Union[int, set[int]], open_mode: OpenMode, s
     :param pids: Product IDs of the device you want to open.  Accepts either a single integer or a set of ints
     :param serial_number: Serial number of the device you want to open.  May be left as None if there is only one device attached.
     """
-
     if type(pids) is int:
         pids = {pids}
 

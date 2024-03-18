@@ -82,19 +82,16 @@ class CySerBridgeBase:
         self.ep_in = None
         self.ep_out = None
 
-        if (
-            self.cy_type == CyType.MFG
-            and self.discovered_dev.curr_cytype == CyType.UART_CDC
-            and sys.platform == "darwin"
-        ):
-            import os
+        if self.cy_type == CyType.MFG and self.discovered_dev.curr_cytype == CyType.UART_CDC:
+            if sys.platform == "darwin":
+                import os
 
-            if os.geteuid() != 0:
-                message = (
-                    "Access to the manufacturer interface of a device in UART CDC mode on MacOS requires elevation. "
-                    "Try rerunning the command with sudo.  See the cy_serial_bridge README for details."
-                )
-                raise CySerialBridgeError(message)
+                if os.geteuid() != 0:
+                    message = (
+                        "Access to the manufacturer interface of a device in UART CDC mode on MacOS requires elevation. "
+                        "Try rerunning the command with sudo.  See the cy_serial_bridge README for details."
+                    )
+                    raise CySerialBridgeError(message)
 
         if self.cy_type != CyType.MFG:
             if self.discovered_dev.scb_interface_settings is None:
@@ -827,7 +824,7 @@ class CyI2CControllerBridge(CySerBridgeBase):
                 raise CySerialBridgeError(message)
 
 
-class CySpiMode(Enum):
+class CySPIMode(Enum):
     """
     Enumeration defining SPI protocol types supported by USB Serial SPI module.
 
@@ -870,7 +867,7 @@ class CySPIConfig:
     word_size: int = 8
 
     # SPI mode to use
-    mode: CySpiMode = CySpiMode.MOTOROLA_MODE_0
+    mode: CySPIMode = CySPIMode.MOTOROLA_MODE_0
 
     # If true, the MSBit of each word is sent first on the wire (standard)
     # If false, the LSBit is sent first
@@ -1008,8 +1005,8 @@ class CySPIControllerBridge(CySerBridgeBase):
         standard = config_unpacked[2]
         cpha = config_unpacked[8]
         cpol = config_unpacked[9]
-        spi_mode: CySpiMode | None = None
-        for mode_value in CySpiMode:
+        spi_mode: CySPIMode | None = None
+        for mode_value in CySPIMode:
             if mode_value.value == (standard, cpha, cpol):
                 spi_mode = mode_value
 

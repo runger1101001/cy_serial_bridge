@@ -50,26 +50,29 @@ This driver installs a command-line interface script, `cy_serial_cli`.  It suppo
 ```
  Usage: cy_serial_cli [OPTIONS] COMMAND [ARGS]...
 
- Cypress serial bridge CLI -- reprogram and communicate with CY7C652xx
+ Cypress Serial Bridge CLI -- reconfigure CY7C652xx serial bridge chips and use them to communicate over UART/I2C/SPI
 
-┌─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ --vid                 -V      INTEGER                          VID of device to connect [default: 0x04b4]                                                          │
-│ --pid                 -P      INTEGER                          PID of device to connect [default: 0xe010]                                                          │
-│ --serno               -S      TEXT                             Serial number string of of device to connect. [default: None]                                       │
-│ --scb                 -s      INTEGER RANGE [0<=x<=1]          SCB channel to use.  For dual channel devices only. [default: 0]                                    │
-│ --verbose             -v                                       Enable verbose logging                                                                              │
-│ --install-completion          [bash|zsh|fish|powershell|pwsh]  Install completion for the specified shell. [default: None]                                         │
-│ --show-completion             [bash|zsh|fish|powershell|pwsh]  Show completion for the specified shell, to copy it or customize the installation. [default: None]  │
-│ --help                                                         Show this message and exit.                                                                         │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ Commands ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ change-type        Set the type of device that the serial bridge acts as.  For configurable bridge devices (65211/65215)                                           │
-│ decode             Decode and display basic information from configuration block bin file                                                                          │
-│ load               Load configuration block to connected device from bin file                                                                                      │
-│ reconfigure        Change configuration of the connected device via the CLI                                                                                        │
-│ save               Save configuration block from connected device to bin file                                                                                      │
-│ scan               Scan for USB devices which look like CY7C652xx serial bridges                                                                                   │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --vid                 -V      VID                              VID of device to connect [default: 0x04b4]                                                                                       │
+│ --pid                 -P      PID                              PID of device to connect [default: 0xe010]                                                                                       │
+│ --serno               -S      TEXT                             Serial number string of of device to connect. [default: None]                                                                    │
+│ --scb                 -s      INTEGER RANGE [0<=x<=1]          SCB channel to use.  For dual channel devices only. [default: 0]                                                                 │
+│ --verbose             -v                                       Enable verbose logging                                                                                                           │
+│ --install-completion          [bash|zsh|fish|powershell|pwsh]  Install completion for the specified shell. [default: None]                                                                      │
+│ --show-completion             [bash|zsh|fish|powershell|pwsh]  Show completion for the specified shell, to copy it or customize the installation. [default: None]                               │
+│ --help                                                         Show this message and exit.                                                                                                      │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ change-type            Set the type of device that the serial bridge acts as (I2C/SPI/UART).  For configurable bridge devices (65211/65215) only.                                               │
+│ decode                 Decode and display basic information from configuration block bin file                                                                                                   │
+│ i2c-write              Perform a write to an I2C peripheral                                                                                                                                     │
+│ load                   Load configuration block to connected device from bin file                                                                                                               │
+│ reconfigure            Change configuration of the connected device via the CLI                                                                                                                 │
+│ save                   Save configuration block from connected device to bin file                                                                                                               │
+│ scan                   Scan for USB devices which look like CY7C652xx serial bridges                                                                                                            │
+│ serial-term            Access a serial terminal for a serial bridge in UART CDC mode                                                                                                            │
+│ spi-transaction        Perform a transaction over the SPI bus                                                                                                                                   │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ### Changing Settings
@@ -127,6 +130,31 @@ Read from address 0x51: 01020304
 
 As you can see, we were able to read the same byte pattern (01 02 03 04) that we had just written!
 
+### Doing SPI Transactions
+This package also implements a rudimentary CLI to do SPI transactions.  As before, this is only recommended for initial testing of hardware as it will be much easier to use the Python API for anything complex.  Also note that SPI is inherently a full-duplex bus so it always sends the same amount of bytes that it receives.
+
+For example, we can read the status register in the EEPROM included on the eval kit by sending it the RDSR command (0x05):
+
+```
+$ cy_serial_cli spi-transaction --frequency 2000000 --mode MOTOROLA_MODE_0 050000
+Connected to SPI interface of CY7C652xx device, firmware version 1.0.3 build 78
+Writing b'\x05\x00\x00' to peripheral
+Read from peripheral: 000000
+```
+(the --frequency and --mode arguments can actually be omitted in this case but I'm adding them for clarity)
+
+Then we can set the write enable bit using WREN (0x6) and verify that it sets in the status register:
+```
+$ cy_serial_cli spi-transaction --frequency 2000000 --mode MOTOROLA_MODE_0 06    
+Connected to SPI interface of CY7C652xx device, firmware version 1.0.3 build 78
+Writing b'\x06' to peripheral
+Read from peripheral: 00
+$ cy_serial_cli spi-transaction --frequency 2000000 --mode MOTOROLA_MODE_0 050000
+Connected to SPI interface of CY7C652xx device, firmware version 1.0.3 build 78
+Writing b'\x05\x00\x00' to peripheral
+Read from peripheral: 000202
+```
+
 ### Accessing the Serial Port
 
 To use the bridge in UART CDC mode, cy_serial_bridge provides the `serial-term` command.  This is a wrapper around the miniterm terminal from the `serial` package.  Running this command will switch the selected device to UART_CDC mode and then open an interactive terminal for it: 
@@ -168,6 +196,28 @@ If a NACK occurs during the operation, an exception of type cy_serial_bridge.I2C
 
 Note: There appears to be a bug with the chip where I2C writes (and reads?) of only 1 byte always indicate success even if the hardware NACKed.  Also, it's unclear what the hardware does if given a 0 length read/write.  Clearly more testing is required here, and it's unclear if the newer -A revision of the part fixes some of these issues (the eval board comes with the old revision).
 
+### SPI controller mode
+
+Similarly, it's possible to open the serial bridge in SPI mode:
+
+```python
+import cy_serial_bridge
+
+with cy_serial_bridge.open_device(cy_serial_bridge.DEFAULT_VID, 
+                                  cy_serial_bridge.DEFAULT_PID, 
+                                  cy_serial_bridge.OpenMode.SPI_CONTROLLER) as bridge:
+    bridge.set_spi_configuration(cy_serial_bridge.driver.CySPIConfig(frequency=1000000))
+```
+
+Then, you can do an SPI transaction using the serial bridge object:
+
+```python
+tx_bytes = bytes([0x01, 0x02, 0x03, 0x04])
+response_bytes = bridge.spi_transfer(tx_bytes)
+```
+
+This will send the data from `tx_bytes` out the MOSI line and save the data from the MISO line into `response_bytes`.
+
 ### UART CDC mode
 
 In UART CDC mode, the serial bridge acts as a standard USB-serial converter.  Luckily, Python already has the pyserial library to interact with such devices.  So, when you open a device in UART_CDC mode, you get back a `serial.Serial` instance that you can use as you would any serial port.
@@ -186,6 +236,8 @@ with cy_serial_bridge.open_device(cy_serial_bridge.DEFAULT_VID,
 
 See the [pyserial docs](https://pythonhosted.org/pyserial/pyserial_api.html#serial.Serial) for more information about how to use the Serial class.
 
+Note that CY7C652xx chips can hit non-standard UART baudrates (e.g. 100000 instead of 115200), but there are some restrictions on accuracy. See Cypress [KBA92442](https://community.infineon.com/t5/Knowledge-Base-Articles/Non-Standard-Baud-Rates-in-USB-Serial-Bridge-Controllers/ta-p/249181) for details.
+
 ## OS-Specific Info
 
 ### Windows
@@ -194,6 +246,8 @@ On Windows, cy_serial_bridge (and other libusb based programs) cannot connect to
 To set this up, you will need to use [Zadig](https://zadig.akeo.ie/).  Simply run this program, click "Options > List All Devices" in the menu, find whichever USB devices represent the CY7C652xx (you might have to look at the VID & PID values), and install the WinUSB driver for them.  Note that there will be at least two USB devices in the list for each bridge chip -- one for the communication interface and one for the configuration interface.  You need to install the driver for *both* for cy_serial_bridge to work.
 
 This process might have to be redone the first time that the bridge is used in each mode -- for example, if I connect a CY7C65211 to a fresh machine in SPI mode and install the driver using Zadig, then change the chip to operate in I2C mode in code, I may have to use Zadig again before Python code can open it in I2C mode.  Zadig installation will also have to be redone if the VID or PID is changed, though it only has to be done once per machine for a given VID-PID-operation mode combination.
+
+Note: If the current driver for an entry in Zadig shows as "usbser", do NOT install the WinUSB driver over it.  The usbser driver is the correct driver for a device in UART CDC mode and will not attach to it otherwise.
 
 I believe that it would be possible to script this a bit more gracefully, by writing a script to change the serial bridge into each mode and then invoke Zadig for each interface.  This should be looked into more.
 

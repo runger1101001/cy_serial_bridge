@@ -260,7 +260,7 @@ def test_spi_config_read_write():
         config_1 = cy_serial_bridge.CySPIConfig(
             frequency=20000,
             word_size=16,
-            mode=cy_serial_bridge.CySpiMode.NATIONAL_MICROWIRE,
+            mode=cy_serial_bridge.CySPIMode.NATIONAL_MICROWIRE,
             msbit_first=False,
             continuous_ssel=False,
             ti_select_precede=True,
@@ -275,7 +275,7 @@ def test_spi_config_read_write():
         config_2 = cy_serial_bridge.CySPIConfig(
             frequency=1000000,
             word_size=8,
-            mode=cy_serial_bridge.CySpiMode.MOTOROLA_MODE_1,
+            mode=cy_serial_bridge.CySPIMode.MOTOROLA_MODE_1,
             msbit_first=True,
             continuous_ssel=True,
             ti_select_precede=False,
@@ -300,7 +300,7 @@ class M95M02Driver:
         eeprom_spi_config = cy_serial_bridge.CySPIConfig(
             frequency=2000000,  # EEPROM max frequency 5MHz, so we play it a bit safe with 2MHz
             word_size=8,
-            mode=cy_serial_bridge.CySpiMode.MOTOROLA_MODE_0,  # EEPROM can use either SPI mode 0 or SPI mode 3
+            mode=cy_serial_bridge.CySPIMode.MOTOROLA_MODE_0,  # EEPROM can use either SPI mode 0 or SPI mode 3
             msbit_first=True,
             continuous_ssel=True,
         )

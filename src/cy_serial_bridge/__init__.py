@@ -9,13 +9,13 @@ out and API/code/tools need further refactoring.
 
 from cy_serial_bridge import configuration_block, device_discovery, driver
 from cy_serial_bridge.configuration_block import ConfigurationBlock
-from cy_serial_bridge.device_discovery import OpenMode, list_devices, scan_for_device, open_device
+from cy_serial_bridge.device_discovery import OpenMode, list_devices, open_device, scan_for_device
 from cy_serial_bridge.driver import (
     CyI2CControllerBridge,
     CySerialBridgeError,
     CySPIConfig,
     CySPIControllerBridge,
-    CySpiMode,
+    CySPIMode,
     I2CArbLostError,
     I2CBusError,
     I2CNACKError,

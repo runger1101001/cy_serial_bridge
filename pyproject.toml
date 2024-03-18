@@ -163,6 +163,7 @@ ignore = [
     'ANN401',  # Allow typing.any
     'UP007',   # Allow old style union annotations (typing.Optional/typing.Union).  Typer does not support the new style ones.
     'PYI025',  # Allow using collections.abc.Set
+    'SIM102',  # Allow multiple nested if statements.  Sometimes it's nice for readability
 ]
 ignore-init-module-imports = true
 line-length = 120

@@ -1,4 +1,5 @@
 import binascii
+import contextlib
 import dataclasses
 import enum
 import logging
@@ -53,6 +54,7 @@ def parse_vid_pid(value: str | int | None) -> int | None:
 VIDOption = typer.Option(
     "-V",
     "--vid",
+    metavar="VID",
     parser=parse_vid_pid,
     help=f"VID of device to connect [default: 0x{DEFAULT_VID:04x}]",
     show_default=False,
@@ -60,6 +62,7 @@ VIDOption = typer.Option(
 PIDOption = typer.Option(
     "-P",
     "--pid",
+    metavar="PID",
     parser=parse_vid_pid,
     help=f"PID of device to connect [default: 0x{DEFAULT_PID:04x}]",
     show_default=False,
@@ -377,7 +380,7 @@ PeriphAddrArgument = typer.Argument(
 I2CWriteDataArgument = typer.Argument(
     help="Data to write to the peripheral.  Must be a string in hex format, e.g. '0abc'."
 )
-FreqOption = typer.Option(
+I2CFreqOption = typer.Option(
     "--frequency",
     "-f",
     min=cy_serial_bridge.CyI2c.MIN_FREQUENCY,
@@ -390,7 +393,7 @@ FreqOption = typer.Option(
 def i2c_write(
     periph_addr: Annotated[int, PeriphAddrArgument],
     data_to_write: Annotated[str, I2CWriteDataArgument] = "",
-    freq: Annotated[int, FreqOption] = cy_serial_bridge.CyI2c.MAX_FREQUENCY.value,
+    freq: Annotated[int, I2CFreqOption] = cy_serial_bridge.CyI2c.MAX_FREQUENCY.value,
 ) -> None:
     with cast(
         cy_serial_bridge.driver.CyI2CControllerBridge,
@@ -416,31 +419,60 @@ def i2c_write(
 
 BytesToReadOption = typer.Argument(min=1, help="Number of bytes to read from the peripheral")
 
+# spi-transaction command
+# ---------------------------------------------------------------------------------------------
 
-@app.command(help="Perform a read from an I2C peripheral")
-def i2c_read(
-    periph_addr: Annotated[int, PeriphAddrArgument],
-    bytes_to_read: Annotated[int, BytesToReadOption],
-    freq: Annotated[int, FreqOption] = cy_serial_bridge.CyI2c.MAX_FREQUENCY.value,
+
+SPISendDataArgument = typer.Argument(
+    help="Data to send on the MOSI line during the SPI transaction.  Must be a string in hex format, e.g. '0abc'."
+)
+
+
+SPIFreqOption = typer.Option(
+    "--frequency",
+    "-f",
+    min=cy_serial_bridge.CySpi.MIN_FREQUENCY,
+    max=cy_serial_bridge.CySpi.MAX_MASTER_FREQUENCY,
+    help="SPI frequency to use, in Hz.",
+)
+
+
+SPIModeArgument = typer.Option(
+    "--mode",
+    "-m",
+    help="SPI mode to use for the transfer",
+    click_type=click.Choice(cy_serial_bridge.CySPIMode._member_names_, case_sensitive=False),  # noqa: SLF001
+    show_default=False,
+)
+
+
+@app.command(help="Perform a transaction over the SPI bus")
+def spi_transaction(
+    bytes_to_send: Annotated[str, SPISendDataArgument],
+    freq: Annotated[int, SPIFreqOption] = cy_serial_bridge.CySpi.MAX_MASTER_FREQUENCY.value,
+    mode: Annotated[str, SPIModeArgument] = cy_serial_bridge.CySPIMode.MOTOROLA_MODE_0.name,
 ) -> None:
     with cast(
-        cy_serial_bridge.driver.CyI2CControllerBridge,
+        cy_serial_bridge.driver.CySPIControllerBridge,
         cy_serial_bridge.open_device(
-            global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.I2C_CONTROLLER, global_opt.serial_number
+            global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.SPI_CONTROLLER, global_opt.serial_number
         ),
     ) as bridge:
-        bridge.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(frequency=freq))
+        mode_enum = cy_serial_bridge.CySPIMode[mode]
 
-        # Do the read
-        try:
-            result = bridge.i2c_read(periph_addr=periph_addr, size=bytes_to_read)
-        except cy_serial_bridge.I2CNACKError:
-            print("NACK received")
-            sys.exit(1)
+        bridge.set_spi_configuration(cy_serial_bridge.driver.CySPIConfig(frequency=freq, mode=mode_enum))
+
+        # Convert data_to_write into bytes
+        data_to_send = binascii.a2b_hex(bytes_to_send)
+        print(f"Writing {data_to_send!r} to peripheral")
+
+        # Do the transfer
+        response = bridge.spi_transfer(data_to_send)
 
         # Display result as an ASCII string
-        data_bytes = binascii.b2a_hex(result).decode("ASCII")
-        print(f"Read from address 0x{periph_addr:02x}: {data_bytes}")
+        response_text = binascii.b2a_hex(response).decode("ASCII")
+        print(f"Read from peripheral: {response_text}")
+
 
 # serial-term command
 # ---------------------------------------------------------------------------------------------
@@ -450,57 +482,57 @@ class EndOfLineType(str, enum.Enum):
     """
     Enum of line ending options supported by Miniterm
     """
-    LF = "lf",
-    CRLF = "crlf",
+
+    LF = "lf"
+    CRLF = "crlf"
     CR = "cr"
 
 
 # We try to ape some of miniterm's more common command line options, though it's not a complete list.
-BaudrateOption = typer.Option("-b", "--baudrate", help="Serial baudrate.", max=cy_serial_bridge.CyUart.MAX_BAUDRATE.value)
+BaudrateOption = typer.Option(
+    "-b", "--baudrate", help="Serial baudrate.", max=cy_serial_bridge.CyUart.MAX_BAUDRATE.value
+)
 EOLOption = typer.Option("--eol", help="End-of-line type to use", case_sensitive=False)
 
 
 @app.command(help="Access a serial terminal for a serial bridge in UART CDC mode")
-def serial_term(baudrate: Annotated[int, BaudrateOption] = 115200,
-                eol: Annotated[EndOfLineType, EOLOption] = EndOfLineType.CRLF):
-
+def serial_term(
+    baudrate: Annotated[int, BaudrateOption] = 115200, eol: Annotated[EndOfLineType, EOLOption] = EndOfLineType.CRLF
+) -> None:
     # Briefly open the serial bridge in UART CDC mode just to get it converted to the right mode
     with cast(
-            serial.Serial,
-            cy_serial_bridge.open_device(
-                global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.UART_CDC, global_opt.serial_number
-            ),
+        serial.Serial,
+        cy_serial_bridge.open_device(
+            global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.UART_CDC, global_opt.serial_number
+        ),
     ) as serial_instance:
-
         serial_instance.baudrate = baudrate
 
         # Below is based on the logic in serial.tools.miniterm.main().
         # For now I have converted most of the arguments to hardcoded values
         # but they could be re-added to the argument parsing later...
-        term = miniterm.Miniterm(
-            serial_instance,
-            echo=False,
-            eol=eol.value,
-            filters=[])
-        term.exit_character = chr(0x1d)  # GS/CTRL+]
+        term = miniterm.Miniterm(serial_instance, echo=False, eol=eol.value, filters=[])
+        term.exit_character = chr(0x1D)  # GS/CTRL+]
         term.menu_character = chr(0x14)  # Menu: CTRL+T
-        term.set_rx_encoding('UTF-8')
-        term.set_tx_encoding('UTF-8')
+        term.set_rx_encoding("UTF-8")
+        term.set_tx_encoding("UTF-8")
 
-        sys.stderr.write('--- Miniterm on {p.name}  {p.baudrate},{p.bytesize},{p.parity},{p.stopbits} ---\n'.format(
-            p=term.serial))
-        sys.stderr.write('--- Quit: {} | Menu: {} | Help: {} followed by {} ---\n'.format(
-            miniterm.key_description(term.exit_character),
-            miniterm.key_description(term.menu_character),
-            miniterm.key_description(term.menu_character),
-            miniterm.key_description('\x08')))
+        sys.stderr.write(
+            "--- Miniterm on {p.name}  {p.baudrate},{p.bytesize},{p.parity},{p.stopbits} ---\n".format(p=term.serial)
+        )
+        sys.stderr.write(
+            "--- Quit: {} | Menu: {} | Help: {} followed by {} ---\n".format(
+                miniterm.key_description(term.exit_character),
+                miniterm.key_description(term.menu_character),
+                miniterm.key_description(term.menu_character),
+                miniterm.key_description("\x08"),
+            )
+        )
 
         term.start()
-        try:
+        with contextlib.suppress(KeyboardInterrupt):
             term.join(True)
-        except KeyboardInterrupt:
-            pass
-        sys.stderr.write('\n--- exit ---\n')
+        sys.stderr.write("\n--- exit ---\n")
         term.join()
         term.close()
 
