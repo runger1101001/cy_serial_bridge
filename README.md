@@ -256,7 +256,7 @@ I believe that it would be possible to script this a bit more gracefully, by wri
 Also note that [NirSoft USBLogView](https://www.nirsoft.net/utils/usb_log_view.html) is extremely useful for answering the question of "what are the VID & PID of the USB device I just plugged in".
 
 ### Linux
-To grant access to the serial bridge USB device without root, you will need to install a udev rules file.  We've provided one for you under the `rules` folder of this repository.  First, copy it to the `/etc/udev/rules.d` folder.  Then, run:
+To grant access to the serial bridge USB device without root, you will need to install a udev rules file.  We've provided one for you [here](https://github.com/mbed-ce/cy_serial_bridge/tree/master/rules).  First, copy it to the `/etc/udev/rules.d` folder.  Then, run:
 ```shell
 $ sudo udevadm control --reload-rules
 $ sudo udevadm trigger

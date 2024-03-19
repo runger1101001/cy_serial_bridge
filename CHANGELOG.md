@@ -48,6 +48,14 @@ Lorem Ipsum dolor sit amet.
 
 _______________________________________________________________________________
 
+## [0.3.1] - 2024-03-19
+
+### Fixed
+
+- Work around [tiangolo/typer#463](https://github.com/tiangolo/typer/pull/463) by explicitly declaring a dependency on Click >=8.0
+
+_______________________________________________________________________________
+
 ## [0.3.0] - 2024-03-18
 
 First (hopefully) stable release!
@@ -61,7 +69,7 @@ First (hopefully) stable release!
 
 ### Changed
 
-- CLI now uses typer instead of argparse.  Besides making it look cooler, this improves type safety and adds some much more understandable exception handlers for the CLI.
+- Scanning for and opening devices is now done using a CyScbContext object rather than using global functions.  This allows one process to open multiple serial bridge devices.
 
 ### Fixed
 
