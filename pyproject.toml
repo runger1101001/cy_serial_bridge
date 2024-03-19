@@ -26,8 +26,6 @@ classifiers = [
 
   # Specify the Python versions you support here.
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -52,7 +50,7 @@ cy_serial_cli = 'cy_serial_bridge.cli:main'
 "Tracker" = 'https://github.com/mbed-ce/cy_serial_bridge/issues'
 
 [tool.poetry.dependencies]
-python = '^3.8.1'
+python = '^3.10'
 libusb1 = "^3.0.0"
 pyserial = "^3.5"
 typer = "^0.9"

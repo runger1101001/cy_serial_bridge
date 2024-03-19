@@ -53,6 +53,7 @@ _______________________________________________________________________________
 ### Fixed
 
 - Work around [tiangolo/typer#463](https://github.com/tiangolo/typer/pull/463) by explicitly declaring a dependency on Click >=8.0
+- Fix minimum Python version dependency
 
 _______________________________________________________________________________
 
