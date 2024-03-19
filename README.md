@@ -168,15 +168,20 @@ $ python3 -m cy_serial_bridge.cli serial-term
 
 cy_serial_bridge provides a rich Python API that can be used to communicate with the serial bridge in each mode. 
 
+To use the API, you must first import the package and create a context.  The context object wraps the libusb instance and must be used to scan for and open devices.
+```python
+import cy_serial_bridge
+
+context = cy_serial_bridge.CyScbContext()
+```
+
 ### I2C controller mode
 
 First, you must open the device and set the configuration:
 ```python
-import cy_serial_bridge
-
-with cy_serial_bridge.open_device(cy_serial_bridge.DEFAULT_VID, 
-                                  cy_serial_bridge.DEFAULT_PID, 
-                                  cy_serial_bridge.OpenMode.I2C_CONTROLLER) as bridge:
+with context.open_device(cy_serial_bridge.DEFAULT_VID, 
+                         cy_serial_bridge.DEFAULT_PID, 
+                         cy_serial_bridge.OpenMode.I2C_CONTROLLER) as bridge:
     bridge.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(frequency=400000))
 ```
 
@@ -201,11 +206,9 @@ Note: There appears to be a bug with the chip where I2C writes (and reads?) of o
 Similarly, it's possible to open the serial bridge in SPI mode:
 
 ```python
-import cy_serial_bridge
-
-with cy_serial_bridge.open_device(cy_serial_bridge.DEFAULT_VID, 
-                                  cy_serial_bridge.DEFAULT_PID, 
-                                  cy_serial_bridge.OpenMode.SPI_CONTROLLER) as bridge:
+with context.open_device(cy_serial_bridge.DEFAULT_VID, 
+                         cy_serial_bridge.DEFAULT_PID, 
+                         cy_serial_bridge.OpenMode.SPI_CONTROLLER) as bridge:
     bridge.set_spi_configuration(cy_serial_bridge.driver.CySPIConfig(frequency=1000000))
 ```
 
@@ -223,15 +226,14 @@ This will send the data from `tx_bytes` out the MOSI line and save the data from
 In UART CDC mode, the serial bridge acts as a standard USB-serial converter.  Luckily, Python already has the pyserial library to interact with such devices.  So, when you open a device in UART_CDC mode, you get back a `serial.Serial` instance that you can use as you would any serial port.
 
 ```python
-import cy_serial_bridge
-with cy_serial_bridge.open_device(cy_serial_bridge.DEFAULT_VID, 
-                                  cy_serial_bridge.DEFAULT_PID, 
-                                  cy_serial_bridge.OpenMode.UART_CDC) as bridge:
-    bridge.baudrate = 115200
-    bridge.timeout = 0.1
+with context.open_device(cy_serial_bridge.DEFAULT_VID, 
+                         cy_serial_bridge.DEFAULT_PID, 
+                         cy_serial_bridge.OpenMode.UART_CDC) as serial_port:
+    serial_port.baudrate = 115200
+    serial_port.timeout = 0.1
     
-    bridge.write(b"Hello world!")
-    response = bridge.read(10)
+    serial_port.write(b"Hello world!")
+    response = serial_port.read(10)
 ```
 
 See the [pyserial docs](https://pythonhosted.org/pyserial/pyserial_api.html#serial.Serial) for more information about how to use the Serial class.

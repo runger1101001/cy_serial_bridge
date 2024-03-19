@@ -86,6 +86,11 @@ class GlobalOptions:
 global_opt: GlobalOptions = cast(GlobalOptions, None)
 
 
+# Global context instance.
+# Fine to use a global one since the CLI can only talk to one device at a time.
+context = cy_serial_bridge.CyScbContext()
+
+
 @app.callback()
 def handle_global_options(
     vid: Annotated[int, VIDOption] = DEFAULT_VID,
@@ -100,7 +105,7 @@ def handle_global_options(
     log.setLevel(log_level)
 
     # Also set libusb log level based on 'verbose'
-    cy_serial_bridge.driver.usb_context.setDebug(usb1.LOG_LEVEL_INFO if verbose else usb1.LOG_LEVEL_ERROR)
+    context.usb_context.setDebug(usb1.LOG_LEVEL_INFO if verbose else usb1.LOG_LEVEL_ERROR)
 
     # Save other options
     global global_opt  # noqa: PLW0603
@@ -118,7 +123,7 @@ OutputConfigurationArgument = typer.Argument(
 def save(file: Annotated[pathlib.Path, OutputConfigurationArgument]) -> None:
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(
+        context.open_device(
             global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE, global_opt.serial_number
         ),
     ) as dev:
@@ -145,7 +150,7 @@ InputConfigurationArgument = typer.Argument(
 def load(file: Annotated[pathlib.Path, InputConfigurationArgument]) -> None:
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(
+        context.open_device(
             global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE, global_opt.serial_number
         ),
     ) as dev:
@@ -203,7 +208,7 @@ def reconfigure(
 
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(
+        context.open_device(
             global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE, global_opt.serial_number
         ),
     ) as dev:
@@ -298,7 +303,7 @@ def change_type(type: Annotated[str, TypeArgument]) -> None:  # noqa: A002
     dev: cy_serial_bridge.driver.CyMfgrIface
     with cast(
         cy_serial_bridge.driver.CyMfgrIface,
-        cy_serial_bridge.open_device(
+        context.open_device(
             global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.MFGR_INTERFACE, global_opt.serial_number
         ),
     ) as dev:
@@ -321,7 +326,7 @@ def scan(scan_all: Annotated[bool, ScanAllOption] = False) -> None:
     Scan for candidate USB devices on the system
     """
     scan_filter = None if scan_all else {(global_opt.vid, global_opt.pid)}
-    devices = cy_serial_bridge.device_discovery.list_devices(scan_filter)
+    devices = context.list_devices(scan_filter)
 
     if len(devices) == 0:
         if scan_all:
@@ -397,7 +402,7 @@ def i2c_write(
 ) -> None:
     with cast(
         cy_serial_bridge.driver.CyI2CControllerBridge,
-        cy_serial_bridge.open_device(
+        context.open_device(
             global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.I2C_CONTROLLER, global_opt.serial_number
         ),
     ) as bridge:
@@ -454,7 +459,7 @@ def spi_transaction(
 ) -> None:
     with cast(
         cy_serial_bridge.driver.CySPIControllerBridge,
-        cy_serial_bridge.open_device(
+        context.open_device(
             global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.SPI_CONTROLLER, global_opt.serial_number
         ),
     ) as bridge:
@@ -502,7 +507,7 @@ def serial_term(
     # Briefly open the serial bridge in UART CDC mode just to get it converted to the right mode
     with cast(
         serial.Serial,
-        cy_serial_bridge.open_device(
+        context.open_device(
             global_opt.vid, global_opt.pid, cy_serial_bridge.OpenMode.UART_CDC, global_opt.serial_number
         ),
     ) as serial_instance:

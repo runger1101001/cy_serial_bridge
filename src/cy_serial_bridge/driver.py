@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from cy_serial_bridge.cy_scb_context import CyScbContext
+
 import usb1  # from 'libusb1' package
 
 from cy_serial_bridge.configuration_block import ConfigurationBlock
@@ -25,10 +27,6 @@ Note that this does NOT include logic for (a) scanning the device tree to find
 the correct USB device or (b) manipulating configuration blocks.  Those get their own
 modules.
 """
-
-# For now, just use one global context.  This might have to be changed later but seems OK for initial development.
-usb_context = usb1.USBContext()
-usb_context.open()
 
 
 # Exceptions for recoverable I2C errors
@@ -60,7 +58,9 @@ class CySerBridgeBase:
     Base class containing functionality common to all modes of a CY7C652xx
     """
 
-    def __init__(self, discovered_dev: DiscoveredDevice, cy_type: CyType, scb_index: int, timeout: int):
+    def __init__(
+        self, context: CyScbContext, discovered_dev: DiscoveredDevice, cy_type: CyType, scb_index: int, timeout: int
+    ):
         """
         Create a CySerBridgeBase.
 
@@ -73,6 +73,7 @@ class CySerBridgeBase:
             message = "scb_index cannot be higher than 1!"
             raise ValueError(message)
 
+        self.context = context
         self.cy_type = cy_type
         self.scb_index = scb_index
         self.discovered_dev = discovered_dev
@@ -119,6 +120,10 @@ class CySerBridgeBase:
         log.info("Discovered USB endpoints successfully")
 
     def __enter__(self) -> Self:
+        if self.context.has_opened_driver:
+            message = "This CyScbContext instance already has a driver open!  Close it or create a new context!"
+            raise CySerialBridgeError(message)
+
         # Create temporary exit stack to open other context managers
         with contextlib.ExitStack() as temp_stack:
             # open USBDeviceHandle
@@ -193,6 +198,10 @@ class CySerBridgeBase:
             else:
                 raise
 
+        # Mark this context as having opened a driver.
+        # Note that there's a 1 context <--> 1 thread relationship so
+        self.context.has_opened_driver = True
+
         return self
 
     def __exit__(
@@ -206,6 +215,11 @@ class CySerBridgeBase:
         if self.dev:
             self.dev.close()
         self.dev = None
+
+        if not self.context.has_opened_driver:
+            message = "...what? Context thinks the driver isn't open?"
+            raise CySerialBridgeError(message)
+        self.context.has_opened_driver = False
 
     def _wait_for_notification(self, event_notification_len: int, timeout: int) -> None:
         """
@@ -360,15 +374,21 @@ class CyMfgrIface(CySerBridgeBase):
     the operation of that program.
     """
 
-    def __init__(self, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000):
+    def __init__(
+        self, context: CyScbContext, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000
+    ):
         """
         Create a CySerBridgeBase.
 
+        Note: You would not normally call this constructor directly.  Instead, you should call
+        CyScbContext.open_device().
+
+        :param context: Context to open the device with.
         :param discovered_dev: Discovered device to open (from list_devices())
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for USB operations in milliseconds
         """
-        super().__init__(discovered_dev, CyType.MFG, scb_index, timeout)
+        super().__init__(context, discovered_dev, CyType.MFG, scb_index, timeout)
 
     ######################################################################
     # Non-public APIs still under experimental stage
@@ -511,15 +531,21 @@ class CyI2CControllerBridge(CySerBridgeBase):
     Driver which uses a Cypress serial bridge in I2C controller (master) mode.
     """
 
-    def __init__(self, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000):
+    def __init__(
+        self, context: CyScbContext, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000
+    ):
         """
         Create a CyI2CControllerBridge.
 
+        Note: You would not normally call this constructor directly.  Instead, you should call
+        CyScbContext.open_device().
+
+        :param context: Context to open the device with.
         :param discovered_dev: Discovered device to open (from list_devices())
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for general USB operations in milliseconds
         """
-        super().__init__(discovered_dev, CyType.I2C, scb_index, timeout)
+        super().__init__(context, discovered_dev, CyType.I2C, scb_index, timeout)
 
         self._curr_frequency: int | None = None
 
@@ -888,15 +914,21 @@ class CySPIControllerBridge(CySerBridgeBase):
     Driver which uses a Cypress serial bridge in SPI controller (master) mode.
     """
 
-    def __init__(self, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000):
+    def __init__(
+        self, context: CyScbContext, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000
+    ):
         """
         Create a CySPIControllerBridge.
 
+        Note: You would not normally call this constructor directly.  Instead, you should call
+        CyScbContext.open_device().
+
+        :param context: Context to open the device with.
         :param discovered_dev: Discovered device to open (from list_devices())
         :param scb_index: Index of the SCB to open, for multi-port devices
         :param timeout: Timeout to use for general USB operations in milliseconds
         """
-        super().__init__(discovered_dev, CyType.SPI, scb_index, timeout)
+        super().__init__(context, discovered_dev, CyType.SPI, scb_index, timeout)
 
         self._curr_frequency: int | None = None
 
@@ -1186,7 +1218,7 @@ class CySPIControllerBridge(CySerBridgeBase):
                     # This is will work OK, but only as long as libusb is not used from another
                     # thread at the same time.
                     # Reference: https://libusb.sourceforge.io/api-1.0/libusb_mtasync.html#Using
-                    usb_context.handleEvents()
+                    self.context.usb_context.handleEvents()
 
                 if (time.time() - start_time) > io_timeout:
                     raise usb1.USBErrorTimeout

@@ -26,6 +26,9 @@ EEPROM_I2C_ADDRESS = 0x51
 EEPROM_PAGE_SIZE = 64
 
 
+context = cy_serial_bridge.CyScbContext()
+
+
 def test_cfg_block_generation():
     """
     Test that we can get and set each property of a configuration block
@@ -85,7 +88,7 @@ def test_user_flash():
 
     # Note: the mode that we open the device in doesn't really matter, it can be anything
     # for this test
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE) as dev:
+    with context.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.MFGR_INTERFACE) as dev:
         # Create a random 8-digit number which will be used in the test.
         # This ensures the flash is actually getting programmed and we aren't just reusing old data.
         random_number = random.randint(0, 10**8 - 1)
@@ -129,16 +132,28 @@ def test_open_by_serial_number():
     Test that open_device() uses the serial number filter correctly
     """
     # For this test to work there should be exactly 1 device connected
-    available_devices = cy_serial_bridge.list_devices()
+    available_devices = context.list_devices()
     assert len(available_devices) == 1
 
     # If passing a junk serial number we should get no device
     with pytest.raises(cy_serial_bridge.CySerialBridgeError, match="does not have a matching serial number"):
-        cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE, serial_number="1234")
+        context.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE, serial_number="1234")
 
     # Opening the real detected serial number should work
-    with cy_serial_bridge.open_device(
+    with context.open_device(
         DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE, serial_number=available_devices[0].serial_number
+    ):
+        pass
+
+
+def test_double_open():
+    """
+    Test that attempting to open two devices with one context generates an error.
+    """
+    with (
+        context.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE),
+        pytest.raises(cy_serial_bridge.CySerialBridgeError, match="already has a driver open"),
+        context.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.MFGR_INTERFACE),
     ):
         pass
 
@@ -148,15 +163,15 @@ def test_auto_change_type():
     Test that open_device() can automatically change the device's type
     """
     # Opening as SPI -> change type to SPI
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER):
+    with context.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.SPI_CONTROLLER):
         pass
 
     # Opening as I2C -> change type to I2C
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER):
+    with context.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.I2C_CONTROLLER):
         pass
 
     # Opening as UART -> change type to UART
-    with cy_serial_bridge.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.UART_CDC):
+    with context.open_device(DEFAULT_VID, DEFAULT_PID, OpenMode.UART_CDC):
         pass
 
 
@@ -169,7 +184,7 @@ def test_i2c_config_set_get():
     print("J20 = 2-3")
     input("Press [ENTER] when done...")
 
-    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.I2C_CONTROLLER) as dev:
+    with context.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.I2C_CONTROLLER) as dev:
         print("Setting speed to 400kHz...")
         max_speed_config = cy_serial_bridge.driver.CyI2CConfig(400000)
         dev.set_i2c_configuration(max_speed_config)
@@ -191,7 +206,7 @@ def test_i2c_read_write():
     """
     Test sending I2C read and write transactions
     """
-    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.I2C_CONTROLLER) as dev:
+    with context.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.I2C_CONTROLLER) as dev:
         dev.set_i2c_configuration(cy_serial_bridge.driver.CyI2CConfig(400000))
 
         # Basic read/write operations
@@ -256,7 +271,7 @@ def test_spi_config_read_write():
     print("J20 = 2-5 [MOSI]")
     input("Press [ENTER] when done...")
 
-    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.SPI_CONTROLLER) as dev:
+    with context.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.SPI_CONTROLLER) as dev:
         config_1 = cy_serial_bridge.CySPIConfig(
             frequency=20000,
             word_size=16,
@@ -357,7 +372,7 @@ def test_spi_read_write():
     """
     Test using the CY7C652xx to read and write the EEPROM on the dev board
     """
-    with cy_serial_bridge.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.SPI_CONTROLLER) as dev:
+    with context.open_device(DEFAULT_VID, {DEFAULT_PID}, OpenMode.SPI_CONTROLLER) as dev:
         eeprom_driver = M95M02Driver(dev)
 
         random_number = random.randint(0, 10**8 - 1)
@@ -381,9 +396,7 @@ def test_uart_loopback():
     print("Please connect a female-female jumper wire from J18 middle pin [Rx] to J21 middle pin [Tx].")
     input("Press [ENTER] when done...")
 
-    serial_port: serial.Serial = cy_serial_bridge.open_device(
-        DEFAULT_VID, {DEFAULT_PID}, cy_serial_bridge.OpenMode.UART_CDC
-    )
+    serial_port: serial.Serial = context.open_device(DEFAULT_VID, {DEFAULT_PID}, cy_serial_bridge.OpenMode.UART_CDC)
     serial_port.baudrate = 3000000  # Theoretically fastest supported by CY7C652xx
     serial_port.timeout = 0.1  # Shouldn't take too long to see the loopback
 
