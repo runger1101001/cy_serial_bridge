@@ -48,6 +48,27 @@ Lorem Ipsum dolor sit amet.
 
 _______________________________________________________________________________
 
+## [0.3.0] - 2024-03-18
+
+First (hopefully) stable release!
+
+### Added
+
+- SPI and UART APIs are now documented
+- Added new `cy_serial_cli serial-term` command which opens a miniterm instance on the SCB device
+- Added new `cy_serial_cli spi-transaction` command which allows doing SPI transactions from the command line
+- README now contains a section about MacOS usage.
+
+### Changed
+
+- CLI now uses typer instead of argparse.  Besides making it look cooler, this improves type safety and adds some much more understandable exception handlers for the CLI.
+
+### Fixed
+
+- Check has been added for the issue that causes changing the type of a UART_CDC device to fail on MacOS.  Cannot completely fix the issue but can at least notify the user and ask them to rerun the command with sudo.
+
+_______________________________________________________________________________
+
 ## [0.2.0] - 2024-03-03
 
 I2C and CLI update!
