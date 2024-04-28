@@ -11,7 +11,11 @@ if TYPE_CHECKING:
     from cy_serial_bridge.utils import ByteSequence
 
 CONFIG_BLOCK_EXPECTED_MAGIC = b"CYUS"
-CONFIG_BLOCK_EXPECTED_MAJOR_VERSION = 1
+
+# Version 1.0.3 observed on CY7C65211.
+# Version 2.0.3 observed on CY7C65211A.
+# So far no differences have been determined between the two versions.
+CONFIG_BLOCK_EXPECTED_MAJOR_VERSIONS = {1, 2}
 
 
 class ConfigurationBlock:
@@ -53,8 +57,8 @@ class ConfigurationBlock:
         if self._cfg_bytes[0:4] != CONFIG_BLOCK_EXPECTED_MAGIC:
             message = "Incorrect magic at start of configuration block"
             raise ValueError(message)
-        if self.config_format_version[0] != CONFIG_BLOCK_EXPECTED_MAJOR_VERSION:
-            message = f"Only know how to work with config block major version {CONFIG_BLOCK_EXPECTED_MAJOR_VERSION} this is 0x{self.config_format_version[0]}"
+        if self.config_format_version[0] not in CONFIG_BLOCK_EXPECTED_MAJOR_VERSIONS:
+            message = f"Only know how to work with config block major versions {', '.join(str(ver) for ver in CONFIG_BLOCK_EXPECTED_MAJOR_VERSIONS)} this is 0x{self.config_format_version[0]}"
             raise ValueError(message)
         if self._get_checksum() != self._calculate_checksum():
             message = f"Checksum failed for configuration block.  Expected 0x{self._calculate_checksum():x} but read 0x{self._get_checksum():x} from header"
@@ -289,4 +293,5 @@ class ConfigurationBlock:
     product_string=\"{self.product_string}\",
     serial_number=\"{self.serial_number}\",
     capsense_on={self.capsense_on},
+    default_frequency={self.default_frequency}
 )"""

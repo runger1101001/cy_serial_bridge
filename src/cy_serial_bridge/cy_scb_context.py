@@ -208,7 +208,14 @@ class CyScbContext:
             # Iff this is a CDC serial device, find its associated COM port.
             # Luckily, pyserial does the hard work of talking to the OS for us here.
             if curr_cytype == CyType.UART_CDC and not list_entry.open_failed:
-                list_entry.serial_port_name = self._find_serial_port_name_for_serno(cast(str, list_entry.serial_number))
+                if list_entry.serial_number is None:
+                    log.warning(
+                        "Discovered CY7C652xx device in UART mode with no serial number configured.  Will "
+                        "not be able to open a terminal to this device until it is configured with a "
+                        "serial number."
+                    )
+                else:
+                    list_entry.serial_port_name = self._find_serial_port_name_for_serno(list_entry.serial_number)
 
             device_list.append(list_entry)
 
@@ -367,6 +374,12 @@ class CyScbContext:
 
         # Step 3: Instantiate the driver!
         if open_mode == OpenMode.UART_CDC:
+            if device_to_open.serial_port_name is None:
+                message = (
+                    "Cannot open this device as cy_serial_bridge could not determine the COM port/"
+                    "TTY that it's connected to."
+                )
+                raise CySerialBridgeError(message)
             return serial.Serial(port=device_to_open.serial_port_name)
         else:
             return typing.cast(AnyDriverClass, driver_class(self, device_to_open))  # type: ignore[call-arg]

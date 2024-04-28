@@ -48,6 +48,18 @@ Lorem Ipsum dolor sit amet.
 
 _______________________________________________________________________________
 
+## [0.3.2] - 2024-04-28
+
+### Fixed
+
+- Added udev rule for CY7C65211A default PID
+- Fixed scanning/reconfiguring devices in UART_CDC mode with no serial number (warning is printed instead of crashing)
+- Fixed `default_frequency` missing from ConfigurationBlock string conversion
+- Config block version 2 (observed on CY7C65211A) is now permitted for the driver, and seems to work OK
+
+
+_______________________________________________________________________________
+
 ## [0.3.1] - 2024-03-19
 
 ### Fixed

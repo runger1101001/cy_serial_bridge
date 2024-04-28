@@ -186,12 +186,14 @@ SetSernoOption = typer.Option("--set-serno", help="Set the serial number of the 
 SetVIDOption = typer.Option(
     "--set-vid",
     help="Set the USB Vendor ID to a given value.  Needs a 0x prefix for hex values!",
-    callback=parse_vid_pid,
+    metavar="VID",
+    parser=parse_vid_pid,
 )
 SetPIDOption = typer.Option(
     "--set-pid",
     help="Set the USB Product ID to a given value.  Needs a 0x prefix for hex values!",
-    callback=parse_vid_pid,
+    metavar="PID",
+    parser=parse_vid_pid,
 )
 
 
