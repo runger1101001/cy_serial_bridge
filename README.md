@@ -199,7 +199,7 @@ read_data = bridge.i2c_read(0x51, num_bytes_to_read)
 
 If a NACK occurs during the operation, an exception of type cy_serial_bridge.I2CNACKError will be thrown.
 
-Note: There appears to be a bug with the chip where I2C writes (and reads?) of only 1 byte always indicate success even if the hardware NACKed.  Also, it's unclear what the hardware does if given a 0 length read/write.  Clearly more testing is required here, and it's unclear if the newer -A revision of the part fixes some of these issues (the eval board comes with the old revision).
+Note: There appears to be a bug with the chip where I2C writes (and reads?) of only 1 byte always indicate success even if the hardware NACKed.  Also, 0 length reads and writes (used sometimes for I2C scanning) are not supported by the hardware.
 
 ### SPI controller mode
 
