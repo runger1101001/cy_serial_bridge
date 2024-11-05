@@ -380,7 +380,9 @@ class CySerBridgeBase:
 
     def is_gpio_input(self, gpio_nr: int) -> bool:
         """
-        Check if a GPIO pin is in input mode.
+        Check if a GPIO pin is readable.
+        We can read the value of input or output pins, but
+        not if they are tristated or in some other mode.
 
         :param pin: GPIO pin number to check
         :return: True if the pin is an input pin, False otherwise
@@ -412,13 +414,11 @@ class CySerBridgeBase:
                 timeout=self.timeout
             )
         # TODO check for errors
-        
+
         
     def get_gpio(self, gpio_nr: int) -> int:
         """
         Get the value of a GPIO pin.
-        TODO can we also read the value of output pins? if not, we should add a method to read the initial state of the pin
-
         :param pin: GPIO pin number to get
         :return: Value of the pin
         """
