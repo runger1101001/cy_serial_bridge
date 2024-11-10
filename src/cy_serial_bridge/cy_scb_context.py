@@ -110,7 +110,8 @@ class CyScbContext:
 
             # CY7C652xx devices always have either two or three interfaces: potentially one for the USB CDC COM port,
             # one for the actual USB-serial bridge, and one for the configuration interface.
-            if cfg.getNumInterfaces() != 2 and cfg.getNumInterfaces() != 3:
+            # CY7C65215 and CY7C65215A devices have (up to?) 4 interfaces.
+            if cfg.getNumInterfaces() != 2 and cfg.getNumInterfaces() != 3 and cfg.getNumInterfaces() != 4:
                 continue
 
             usb_cdc_interface_settings: usb1.USBInterfaceSetting | None = None
@@ -118,6 +119,7 @@ class CyScbContext:
             scb_interface_settings: usb1.USBInterfaceSetting | None = None
             mfg_interface_settings: usb1.USBInterfaceSetting
 
+            # CY7C65215 devices could have 0-2 CDC interfaces, up to one on each SCB
             if cfg.getNumInterfaces() == 3 and cfg[0][0].getClass() == USBClass.CDC:
                 # USB CDC mode
                 usb_cdc_interface_settings = cfg[0][0]
@@ -136,8 +138,9 @@ class CyScbContext:
 
             else:
                 # USB vendor mode
-                scb_interface_settings = cfg[0][0]
-                mfg_interface_settings = cfg[1][0]
+                scb_interface_settings = cfg[2][0]
+                #mfg_interface_settings = cfg[1][0]
+                mfg_interface_settings = cfg[3][0] # CY7C65215 devices have MFG on interface #4
 
                 # Check SCB interface -- the Class should be 0xFF (vendor defined/no rules)
                 # and the SubClass value gives the CyType
@@ -153,21 +156,22 @@ class CyScbContext:
                 # Check SCB endpoints
                 if scb_interface_settings.getNumEndpoints() != 3:
                     continue
+
                 # Bulk host-to-dev endpoint
                 if (
-                    scb_interface_settings[0].getAddress() != 0x01
+                    not (scb_interface_settings[0].getAddress() in [0x01, 0x04])
                     or (scb_interface_settings[0].getAttributes() & 0x3) != 2
                 ):
                     continue
                 # Bulk dev-to-host endpoint
                 if (
-                    scb_interface_settings[1].getAddress() != 0x82
+                    not (scb_interface_settings[1].getAddress() in [0x82, 0x85])
                     or (scb_interface_settings[1].getAttributes() & 0x3) != 2
                 ):
                     continue
                 # Interrupt dev-to-host endpoint
                 if (
-                    scb_interface_settings[2].getAddress() != 0x83
+                    not (scb_interface_settings[2].getAddress() in [0x83, 0x86])
                     or (scb_interface_settings[2].getAttributes() & 0x3) != 3
                 ):
                     continue
