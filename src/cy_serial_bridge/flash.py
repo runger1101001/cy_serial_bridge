@@ -89,8 +89,8 @@ SPIModeOption = typer.Option(
     click_type=click.Choice(cy_serial_bridge.CySPIMode._member_names_, case_sensitive=False),  # noqa: SLF001
     show_default=False,
 )
-PreFlashOption = typer.Option("--pre-flash", "-p", help="Commands before flashing (e.g. desiable write protection)", default=None)
-PostFlashOption = typer.Option("--post-flash", "-P", help="Commands after flashing (e.g. enable write protection)", default=None)
+PreFlashOption = typer.Option("--pre-flash", help="Commands before flashing (e.g. desiable write protection)", default=None)
+PostFlashOption = typer.Option("--post-flash", help="Commands after flashing (e.g. enable write protection)", default=None)
 TransferSizeOption = typer.Option(
     "--transfer-size", 
     "-t", 
@@ -200,6 +200,37 @@ def post_flash(bridge: cy_serial_bridge.driver.CySPIControllerBridge) -> None:
         data_to_send = binascii.a2b_hex(global_opt.post_flash)
         response = bridge.spi_transfer(data_to_send)
         # TODO verbose output
+
+
+def write_enable(bridge: cy_serial_bridge.driver.CySPIControllerBridge) -> None:
+    data = [ 0x06 ]
+    response = bridge.spi_transfer(data)
+    # TODO verbose output
+
+def read_status(bridge: cy_serial_bridge.driver.CySPIControllerBridge) -> None:
+    data = [ 0x05 ]
+    response = bridge.spi_transfer(data)
+    # TODO verbose output
+
+def erase_sector(bridge: cy_serial_bridge.driver.CySPIControllerBridge, address: int) -> None:
+    data = [ 0x20 ] + address.to_bytes(3, 'big')
+    response = bridge.spi_transfer(data)
+    # TODO verbose output
+
+def erase_all(bridge: cy_serial_bridge.driver.CySPIControllerBridge) -> None:
+    data = [ 0x06 ]
+    response = bridge.spi_transfer(data)
+    # TODO verbose output
+
+def erase_block(bridge: cy_serial_bridge.driver.CySPIControllerBridge, address: int) -> None:
+    data = [ 0xD8 ] + address.to_bytes(3, 'big')
+    response = bridge.spi_transfer(data)
+    # TODO verbose output
+
+def write_page(bridge: cy_serial_bridge.driver.CySPIControllerBridge, address: int, data: bytes) -> None:
+    data = [ 0x02 ] + address.to_bytes(3, 'big') + data
+    response = bridge.spi_transfer(data)
+    # TODO verbose output
 
 
 # Flash command
