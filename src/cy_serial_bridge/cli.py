@@ -562,7 +562,7 @@ class GpioOutputStyle(str, enum.Enum):
 GpioOutputStyleOption = typer.Option("--output-style", help="Output style to use", case_sensitive=False)
 
 
-@app.command(help="Set/Get GPIO pins on the CY7C65215")
+@app.command(help="Set/Get GPIO pins on the CY7C652xx")
 def gpio(
     gpio_opt: Annotated[str, GpioArgument] = "", outstyle: Annotated[GpioOutputStyle, GpioOutputStyleOption] = GpioOutputStyle.ASCII
 ) -> None:
