@@ -364,35 +364,9 @@ class CySerBridgeBase:
             result_bytes.extend(page_bytes)
 
         return result_bytes
-    
-
-    def is_gpio_output(self, gpio_nr: int) -> bool:
-        """
-        Check if a GPIO pin is in output mode.
-
-        :param pin: GPIO pin number to check
-        :return: True if the pin is an output pin, False otherwise
-        """
-
-        # TODO implement by checking it in the active configuration block
-        return True
 
 
-    def is_gpio_input(self, gpio_nr: int) -> bool:
-        """
-        Check if a GPIO pin is readable.
-        We can read the value of input or output pins, but
-        not if they are tristated or in some other mode.
-
-        :param pin: GPIO pin number to check
-        :return: True if the pin is an input pin, False otherwise
-        """
-
-        # TODO implement by checking it in the active configuration block
-        return True
-
-
-    def set_gpio(self, gpio_nr: int, value: int) -> None:
+    def set_gpio(self, gpio_nr: int, value: bool) -> None:
         """
         Set the value of a GPIO pin.
 
@@ -400,32 +374,24 @@ class CySerBridgeBase:
         :param value: Value to set the pin to
         """
 
-        if not self.is_gpio_output(gpio_nr):
-            message = f"GPIO {gpio_nr} is not usable!"
-            raise CySerialBridgeError(message)        
-        if value != 0 and value != 1:
-            value = 1
         self.dev.controlWrite(
                 request_type=CY_VENDOR_REQUEST_HOST_TO_DEVICE,
                 request=CyVendorCmds.CY_GPIO_SET_VALUE_CMD,
                 value=gpio_nr,
-                index=value,
+                index=1 if value==True else 0,
                 data=[],
                 timeout=self.timeout
             )
         # TODO check for errors
 
         
-    def get_gpio(self, gpio_nr: int) -> int:
+    def get_gpio(self, gpio_nr: int) -> bool:
         """
         Get the value of a GPIO pin.
         :param pin: GPIO pin number to get
         :return: Value of the pin
         """
 
-        if not self.is_gpio_input(gpio_nr):
-            message = f"GPIO {gpio_nr} is not usable!"
-            raise CySerialBridgeError(message)
         result_bytes = self.dev.controlRead(
                 request_type=CY_VENDOR_REQUEST_DEVICE_TO_HOST,
                 request=CyVendorCmds.CY_GPIO_GET_VALUE_CMD,
@@ -437,7 +403,7 @@ class CySerBridgeBase:
         if len(result_bytes) != CY_GET_GPIO_LEN or result_bytes[0] != 0:
             message = f"Error getting GPIO {gpio_nr}"
             raise CySerialBridgeError(message)
-        return result_bytes[1]
+        return (result_bytes[1]==1)
 
 
 class CyMfgrIface(CySerBridgeBase):
