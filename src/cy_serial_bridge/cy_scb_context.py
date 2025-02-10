@@ -30,6 +30,7 @@ class OpenMode(Enum):
     I2C_CONTROLLER = (CyType.I2C, driver.CyI2CControllerBridge)
     SPI_CONTROLLER = (CyType.SPI, driver.CySPIControllerBridge)
     MFGR_INTERFACE = (None, driver.CyMfgrIface)
+    CTL_INTERFACE =  (None, driver.CyControlIface)
 
     # Note: Unlike the other open modes, UART_CDC directly returns a pyserial Serial object
     # instead of a driver from this class
@@ -169,7 +170,7 @@ class CyScbContext:
             # one for the actual USB-serial bridge, and one for the configuration interface.
             # CY7C65215 and CY7C65215A devices have (up to?) 4 interfaces.
             # CY7C65215 devices could have 0-2 CDC interfaces, up to one on each SCB
-            if cfg.getNumInterfaces() != 2 and cfg.getNumInterfaces() != 3 and cfg.getNumInterfaces() != 4:
+            if cfg.getNumInterfaces() < 2 or cfg.getNumInterfaces() > 5:
                 continue
 
             usb_cdc_interface_settings: usb1.USBInterfaceSetting | None = None
@@ -203,12 +204,15 @@ class CyScbContext:
                             scb_interface_settings = cfg[i][0]
                             curr_cytype = CyType.UART_VENDOR
 
+            # this is not correct, as we may have zero CDC interfaces configured
             if curr_cytype is None or mfg_interface_settings is None \
                 or (scb_interface_settings is None and usb_cdc_interface_settings is None):
                 # TODO verbose output
                 continue
 
-            if mfg_interface_settings is not None: curr_cytype = CyType.MFG
+            # this does not make sense - the default type should not be MFG
+            #if mfg_interface_settings is not None: curr_cytype = CyType.MFG
+            curr_cytype = CyType.CTL
 
             # If we got all the way here, it looks like a CY6C652xx device!
             # Record attributes and add it to the list

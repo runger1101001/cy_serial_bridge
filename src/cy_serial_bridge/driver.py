@@ -94,7 +94,7 @@ class CySerBridgeBase:
                     )
                     raise CySerialBridgeError(message)
 
-        if self.cy_type != CyType.MFG:
+        if self.cy_type != CyType.MFG and self.cy_type != CyType.CTL:
             if self.discovered_dev.scb_interface_settings is None:
                 message = "Opening this CyType requires an SCB interface to be present on the USB device"
                 raise CySerialBridgeError(message)
@@ -113,7 +113,7 @@ class CySerBridgeBase:
                     self.ep_intr = ep_addr
 
         # Check that we got the expected endpoints (though the manufacturer interface doesn't have them)
-        if cy_type != CyType.MFG and (self.ep_in is None or self.ep_out is None or self.ep_intr is None):
+        if cy_type != CyType.MFG and cy_type != CyType.CTL and (self.ep_in is None or self.ep_out is None or self.ep_intr is None):
             message = "Failed to find CY7C652xx USB endpoints in USB device -- not a Cypress serial bridge device?"
             raise CySerialBridgeError(message)
 
@@ -147,16 +147,23 @@ class CySerBridgeBase:
                     self.discovered_dev.mfg_interface_settings,
                     self.discovered_dev.scb_interface_settings,
                     self.discovered_dev.usb_cdc_interface_settings,
-                    self.discovered_dev.usb_cdc_interface_settings,
+                    # I don't see why we'd need this twice?
+                    #self.discovered_dev.usb_cdc_interface_settings,
                 )
 
                 for interface in filter(lambda iface: iface is not None, all_interfaces):
                     if self.dev.kernelDriverActive(interface.getNumber()):
-                        self.dev.detachKernelDriver(interface.getNumber())
+                        log.debug("Detaching kernel driver from interface %d", interface.getNumber())
+                        #self.dev.detachKernelDriver(interface.getNumber())
+                    else:
+                        log.debug("Kernel driver not active on interface %d", interface.getNumber())
 
             if self.cy_type == CyType.MFG:
                 # Interface to use is the manufacturer interface
                 target_interface = self.discovered_dev.mfg_interface_settings
+            elif self.cy_type == CyType.CTL:
+                # Interface to use is the control interface
+                target_interface = None
             else:
                 # Interface to use is the SCB interface
                 target_interface = self.discovered_dev.scb_interface_settings
@@ -166,11 +173,11 @@ class CySerBridgeBase:
             # Windows and others seems to differ in expected order of
             # when to claim interface and when to set configuration.
             #
-            self.dev.setConfiguration(self.discovered_dev.usb_configuration.getConfigurationValue())
-            if target_interface.getAlternateSetting() > 0:
-                self.dev.setInterfaceAltSetting(target_interface.getNumber(), target_interface.getAlternateSetting())
+            # self.dev.setConfiguration(self.discovered_dev.usb_configuration.getConfigurationValue())
+            # if target_interface.getAlternateSetting() > 0:
+            #     self.dev.setInterfaceAltSetting(target_interface.getNumber(), target_interface.getAlternateSetting())
 
-            temp_stack.enter_context(self.dev.claimInterface(target_interface.getNumber()))
+            # temp_stack.enter_context(self.dev.claimInterface(target_interface.getNumber()))
 
             # Check the device signature
             signature = bytes(self.get_signature())
@@ -184,6 +191,10 @@ class CySerBridgeBase:
             # Get and print the firmware version
             firmware_version = self.get_firmware_version()
             print(
+                "Connected to %s interface of CY7C652xx device, firmware version %d.%d.%d build %d"
+                % (self.cy_type.name, *firmware_version)
+            )
+            log.info(
                 "Connected to %s interface of CY7C652xx device, firmware version %d.%d.%d build %d"
                 % (self.cy_type.name, *firmware_version)
             )
@@ -405,6 +416,39 @@ class CySerBridgeBase:
             raise CySerialBridgeError(message)
         return (result_bytes[1]==1)
 
+
+
+class CyControlIface(CySerBridgeBase):
+    """
+    Control-only interface, can be used to set GPIOs if no serial interfaces are configured.
+    """
+    def __init__(
+        self, context: CyScbContext, discovered_dev: DiscoveredDevice, scb_index: int = 0, timeout: int = 1000
+    ):
+        """
+        Create a CySerBridgeBase.
+
+        Note: You would not normally call this constructor directly.  Instead, you should call
+        CyScbContext.open_device().
+
+        :param context: Context to open the device with.
+        :param discovered_dev: Discovered device to open (from list_devices())
+        :param scb_index: Index of the SCB to open, for multi-port devices
+        :param timeout: Timeout to use for USB operations in milliseconds
+        """
+        super().__init__(context, discovered_dev, CyType.CTL, scb_index, timeout)
+
+    def connect(self) -> int:
+        """
+        Nothing special to do
+        """
+        return 0
+    
+    def disconnect(self) -> int:
+        """
+        Nothing special to do
+        """
+        return 0
 
 class CyMfgrIface(CySerBridgeBase):
     """
